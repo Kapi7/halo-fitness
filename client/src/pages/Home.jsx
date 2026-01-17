@@ -312,7 +312,7 @@ export default function Home() {
               className="h-[300px] sm:h-[400px] rounded-2xl overflow-hidden shadow-xl"
             >
               <img
-                src="/images/hiit-abwheel-hq.jpg"
+                src="/images/savasana-class.jpg"
                 alt="Halo Fitness Training"
                 className="w-full h-full object-cover"
               />
