@@ -40,9 +40,9 @@ services:
       - key: ADMIN_EMAILS
         sync: false
 
-  # Frontend Static Site
-  - type: static
-    name: halo-fitness-web
+staticSites:
+  # Frontend
+  - name: halo-fitness-web
     rootDir: client
     buildCommand: npm install && npm run build
     staticPublishPath: dist
