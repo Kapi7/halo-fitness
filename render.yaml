@@ -39,16 +39,11 @@ services:
         sync: false
       - key: ADMIN_EMAILS
         sync: false
-    disk:
-      name: halo-data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
 
   # Frontend Static Site
   - type: web
     name: halo-fitness-web
     runtime: static
-    region: frankfurt
     plan: free
     rootDir: client
     buildCommand: npm install && npm run build
