@@ -8,7 +8,16 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Loader2, Trash2, Save, Users, Calendar, Clock, TrendingUp } from 'lucide-react';
+import { Loader2, Trash2, Save, Users, Calendar, Clock, TrendingUp, Lock } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const CLASS_TYPES = [
+  { value: '', label: 'User chooses' },
+  { value: 'HIIT', label: 'HIIT' },
+  { value: 'Pilates Reformer', label: 'Pilates Reformer' },
+  { value: 'Pilates Clinical Rehab', label: 'Pilates Clinical Rehab' },
+  { value: 'Pilates Matte', label: 'Pilates Matte' },
+];
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -30,6 +39,11 @@ export default function Admin() {
     start_time: '08:00',
     slots_count: 4,
     is_closed: false,
+    class_type: '',
+  });
+  const [quickClose, setQuickClose] = useState({
+    startDate: '',
+    endDate: '',
   });
   const [newWeeklyOverrideDate, setNewWeeklyOverrideDate] = useState('');
   const [weeklyOverrideStep, setWeeklyOverrideStep] = useState('date');
@@ -87,12 +101,42 @@ export default function Admin() {
   const handleAddOverride = async () => {
     if (!newOverride.date) return toast.error('Select a date');
     try {
-      await api.addOverride(newOverride);
+      const payload = {
+        ...newOverride,
+        class_type: newOverride.class_type === 'none' ? '' : newOverride.class_type,
+      };
+      await api.addOverride(payload);
       toast.success('Override added');
-      setNewOverride({ date: '', start_time: '08:00', slots_count: 4, is_closed: false });
+      setNewOverride({ date: '', start_time: '08:00', slots_count: 4, is_closed: false, class_type: '' });
       fetchOverrides();
     } catch (e) {
       toast.error('Failed to add override');
+    }
+  };
+
+  const handleQuickClose = async () => {
+    if (!quickClose.startDate || !quickClose.endDate) {
+      return toast.error('Select both start and end dates');
+    }
+
+    const start = new Date(quickClose.startDate);
+    const end = new Date(quickClose.endDate);
+    const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+    if (diffDays > 7) {
+      return toast.error('Maximum 7 days can be closed at once');
+    }
+    if (diffDays < 1) {
+      return toast.error('End date must be on or after start date');
+    }
+
+    try {
+      await api.bulkCloseSchedule(quickClose.startDate, quickClose.endDate);
+      toast.success(`Closed ${diffDays} day${diffDays > 1 ? 's' : ''}`);
+      setQuickClose({ startDate: '', endDate: '' });
+      fetchOverrides();
+    } catch (e) {
+      toast.error(e.message || 'Failed to close days');
     }
   };
 
@@ -116,6 +160,7 @@ export default function Admin() {
         start_time: defaultDay ? defaultDay.startTime : '08:00',
         slots_count: defaultDay ? defaultDay.slotsCount : 4,
         is_closed: defaultDay ? defaultDay.isClosed : false,
+        class_type: '',
       });
     }
     setTempWeeklyConfig(initialConfig);
@@ -310,6 +355,45 @@ export default function Admin() {
             </Card>
           </div>
 
+          {/* Quick Close Card */}
+          <Card className="mb-6 bg-gradient-to-br from-red-50 to-white border-red-100">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center gap-2">
+                <Lock className="w-5 h-5 text-red-500" /> Quick Close (Up to 7 Days)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-4 items-end">
+                <div className="flex-1">
+                  <Label>Start Date</Label>
+                  <Input
+                    type="date"
+                    value={quickClose.startDate}
+                    onChange={(e) => setQuickClose({ ...quickClose, startDate: e.target.value })}
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label>End Date</Label>
+                  <Input
+                    type="date"
+                    value={quickClose.endDate}
+                    onChange={(e) => setQuickClose({ ...quickClose, endDate: e.target.value })}
+                  />
+                </div>
+                <Button
+                  onClick={handleQuickClose}
+                  variant="destructive"
+                  className="whitespace-nowrap"
+                >
+                  <Lock className="w-4 h-4 mr-2" /> Close Selected Days
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                This will mark all selected days as closed. Maximum 7 days at once.
+              </p>
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
@@ -408,31 +492,53 @@ export default function Admin() {
                           </div>
                         </div>
                         {!newOverride.is_closed && (
-                          <div className="flex gap-4">
-                            <div className="flex-1">
-                              <Label>Start Time</Label>
-                              <Input
-                                type="time"
-                                value={newOverride.start_time}
-                                onChange={(e) =>
-                                  setNewOverride({ ...newOverride, start_time: e.target.value })
-                                }
-                              />
+                          <>
+                            <div className="flex gap-4">
+                              <div className="flex-1">
+                                <Label>Start Time</Label>
+                                <Input
+                                  type="time"
+                                  value={newOverride.start_time}
+                                  onChange={(e) =>
+                                    setNewOverride({ ...newOverride, start_time: e.target.value })
+                                  }
+                                />
+                              </div>
+                              <div className="w-24">
+                                <Label>Slots</Label>
+                                <Input
+                                  type="number"
+                                  value={newOverride.slots_count}
+                                  onChange={(e) =>
+                                    setNewOverride({
+                                      ...newOverride,
+                                      slots_count: parseInt(e.target.value),
+                                    })
+                                  }
+                                />
+                              </div>
                             </div>
-                            <div className="w-24">
-                              <Label>Slots</Label>
-                              <Input
-                                type="number"
-                                value={newOverride.slots_count}
-                                onChange={(e) =>
-                                  setNewOverride({
-                                    ...newOverride,
-                                    slots_count: parseInt(e.target.value),
-                                  })
+                            <div>
+                              <Label>Preset Class Type (optional)</Label>
+                              <Select
+                                value={newOverride.class_type}
+                                onValueChange={(value) =>
+                                  setNewOverride({ ...newOverride, class_type: value })
                                 }
-                              />
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="User chooses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {CLASS_TYPES.map((ct) => (
+                                    <SelectItem key={ct.value} value={ct.value || 'none'}>
+                                      {ct.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </div>
+                          </>
                         )}
                         <Button
                           onClick={handleAddOverride}
@@ -464,6 +570,11 @@ export default function Admin() {
                             ) : (
                               <span>
                                 {ov.startTime} ({ov.slotsCount} slots)
+                                {ov.classType && (
+                                  <span className="ml-2 text-halo-pink font-medium">
+                                    [{ov.classType}]
+                                  </span>
+                                )}
                               </span>
                             )}
                           </div>
@@ -528,7 +639,7 @@ export default function Admin() {
                                 </div>
                               </div>
                               {!day.is_closed && (
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 flex-wrap">
                                   <Input
                                     type="time"
                                     value={day.start_time}
@@ -537,7 +648,7 @@ export default function Admin() {
                                       newConfig[idx].start_time = e.target.value;
                                       setTempWeeklyConfig(newConfig);
                                     }}
-                                    className="h-8 text-xs"
+                                    className="h-8 text-xs w-24"
                                   />
                                   <Input
                                     type="number"
@@ -547,8 +658,27 @@ export default function Admin() {
                                       newConfig[idx].slots_count = parseInt(e.target.value);
                                       setTempWeeklyConfig(newConfig);
                                     }}
-                                    className="h-8 text-xs w-16"
+                                    className="h-8 text-xs w-14"
                                   />
+                                  <Select
+                                    value={day.class_type || 'none'}
+                                    onValueChange={(value) => {
+                                      const newConfig = [...tempWeeklyConfig];
+                                      newConfig[idx].class_type = value === 'none' ? '' : value;
+                                      setTempWeeklyConfig(newConfig);
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs flex-1 min-w-[100px]">
+                                      <SelectValue placeholder="Class type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {CLASS_TYPES.map((ct) => (
+                                        <SelectItem key={ct.value} value={ct.value || 'none'}>
+                                          {ct.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                               )}
                             </div>

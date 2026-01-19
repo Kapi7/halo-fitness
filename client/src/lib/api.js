@@ -162,6 +162,13 @@ class ApiClient {
     });
   }
 
+  async bulkCloseSchedule(startDate, endDate) {
+    return this.request('/admin/schedule/bulk-close', {
+      method: 'POST',
+      body: JSON.stringify({ startDate, endDate }),
+    });
+  }
+
   async getWeeklyOverrides() {
     return this.request('/admin/schedule/weekly-overrides');
   }

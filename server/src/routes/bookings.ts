@@ -67,8 +67,8 @@ async function addToUserCalendar(userId: string, event: {
       requestBody: {
         summary: event.summary,
         description: event.description,
-        start: { dateTime: event.startTime, timeZone: 'Europe/Berlin' },
-        end: { dateTime: event.endTime, timeZone: 'Europe/Berlin' },
+        start: { dateTime: event.startTime, timeZone: 'Asia/Nicosia' },
+        end: { dateTime: event.endTime, timeZone: 'Asia/Nicosia' },
         reminders: {
           useDefault: false,
           overrides: [

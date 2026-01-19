@@ -116,7 +116,7 @@ router.get('/schedule/overrides', async (req, res) => {
 // Add single day override
 router.post('/schedule/overrides', async (req, res) => {
   try {
-    const { date, start_time, slots_count, is_closed } = req.body;
+    const { date, start_time, slots_count, is_closed, class_type } = req.body;
 
     // Check if override exists
     const [existing] = await db
@@ -133,7 +133,12 @@ router.post('/schedule/overrides', async (req, res) => {
     if (existing) {
       await db
         .update(schema.scheduleConfigs)
-        .set({ startTime: start_time, slotsCount: slots_count, isClosed: is_closed })
+        .set({
+          startTime: start_time,
+          slotsCount: slots_count,
+          isClosed: is_closed,
+          classType: class_type || null
+        })
         .where(eq(schema.scheduleConfigs.id, existing.id));
     } else {
       await db.insert(schema.scheduleConfigs).values({
@@ -142,6 +147,7 @@ router.post('/schedule/overrides', async (req, res) => {
         startTime: start_time,
         slotsCount: slots_count,
         isClosed: is_closed,
+        classType: class_type || null,
       });
     }
 
@@ -161,6 +167,72 @@ router.delete('/schedule/overrides/:id', async (req, res) => {
   } catch (error) {
     console.error('Delete override error:', error);
     return res.status(500).json({ error: 'Failed to delete override' });
+  }
+});
+
+// Bulk close multiple days (max 7 days)
+router.post('/schedule/bulk-close', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: 'Start date and end date are required' });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // Validate date range (max 7 days)
+    const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDays > 7) {
+      return res.status(400).json({ error: 'Maximum 7 days can be closed at once' });
+    }
+    if (diffDays < 1) {
+      return res.status(400).json({ error: 'End date must be on or after start date' });
+    }
+
+    // Create override for each day in range
+    const closedDates: string[] = [];
+    const currentDate = new Date(start);
+
+    while (currentDate <= end) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+
+      // Check if override already exists for this date
+      const [existing] = await db
+        .select()
+        .from(schema.scheduleConfigs)
+        .where(
+          and(
+            eq(schema.scheduleConfigs.type, 'override'),
+            eq(schema.scheduleConfigs.specificDate, dateStr)
+          )
+        )
+        .limit(1);
+
+      if (existing) {
+        // Update existing override to closed
+        await db
+          .update(schema.scheduleConfigs)
+          .set({ isClosed: true })
+          .where(eq(schema.scheduleConfigs.id, existing.id));
+      } else {
+        // Create new closed override
+        await db.insert(schema.scheduleConfigs).values({
+          type: 'override',
+          specificDate: dateStr,
+          isClosed: true,
+        });
+      }
+
+      closedDates.push(dateStr);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return res.json({ success: true, closedDates });
+  } catch (error) {
+    console.error('Bulk close error:', error);
+    return res.status(500).json({ error: 'Failed to bulk close schedule' });
   }
 });
 
@@ -213,6 +285,7 @@ router.post('/schedule/weekly-overrides', async (req, res) => {
         startTime: day.start_time,
         slotsCount: day.slots_count,
         isClosed: day.is_closed,
+        classType: day.class_type || null,
       });
     }
 

@@ -50,6 +50,7 @@ export const scheduleConfigs = sqliteTable('schedule_configs', {
   startTime: text('start_time'), // HH:mm format
   slotsCount: integer('slots_count').default(4),
   isClosed: integer('is_closed', { mode: 'boolean' }).default(false),
+  classType: text('class_type'), // Preset class type for this slot (null = user chooses)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 

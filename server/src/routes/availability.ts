@@ -14,6 +14,7 @@ interface SlotDetails {
   participants: number;
   participant_names?: string[];
   is_preset?: boolean;
+  preset_class_type?: string; // Preset class type from schedule config
 }
 
 interface Slot {
@@ -26,7 +27,7 @@ interface Slot {
 router.get('/:date', async (req, res) => {
   try {
     const { date } = req.params; // YYYY-MM-DD
-    const timeZone = 'Asia/Jerusalem'; // Default timezone, could be configurable
+    const timeZone = 'Asia/Nicosia'; // Cyprus timezone
 
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
@@ -249,17 +250,25 @@ router.get('/:date', async (req, res) => {
         }
       }
 
-      // Tuesday 11:15 Pilates Matte preset
-      if (dayOfWeek === 2 && slotHour === 11 && slotMinute === 15) {
-        if (slotStatus.status === 'empty') {
-          slotStatus.details = {
-            class_type: 'Pilates Matte',
-            mode: 'Group',
-            participants: 0,
-            is_preset: true,
-          };
-          slotStatus.status = 'partial';
-        }
+      // Check for preset class type from schedule config
+      if (scheduleConfig.classType && slotStatus.status === 'empty') {
+        slotStatus.details = {
+          class_type: scheduleConfig.classType,
+          mode: 'Group',
+          participants: 0,
+          is_preset: true,
+          preset_class_type: scheduleConfig.classType,
+        };
+        slotStatus.status = 'partial';
+      } else if (scheduleConfig.classType && slotStatus.status === 'available') {
+        // For available slots with preset, include the preset info
+        slotStatus.details = {
+          class_type: scheduleConfig.classType,
+          mode: 'Group',
+          participants: 0,
+          is_preset: true,
+          preset_class_type: scheduleConfig.classType,
+        };
       }
 
       slots.push(slotStatus);

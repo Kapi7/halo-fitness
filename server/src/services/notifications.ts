@@ -1,4 +1,13 @@
 import { format, parseISO } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
+
+const CYPRUS_TIMEZONE = 'Asia/Nicosia';
+
+function formatInTimezone(date: Date | string, formatStr: string): string {
+  const d = typeof date === 'string' ? parseISO(date) : date;
+  const zonedDate = toZonedTime(d, CYPRUS_TIMEZONE);
+  return format(zonedDate, formatStr);
+}
 
 interface BookingNotification {
   userName: string;
@@ -114,7 +123,7 @@ async function sendEmailNotification(
 // ============================================
 
 export async function notifyAdminsNewBooking(data: BookingNotification): Promise<void> {
-  const formattedDate = format(parseISO(data.startTime), "EEEE, MMM d 'at' HH:mm");
+  const formattedDate = formatInTimezone(data.startTime, "EEEE, MMM d 'at' HH:mm");
 
   // Get admin contacts - exclude the user who just booked (they already got their confirmation)
   const adminEmails = (process.env.ADMIN_EMAILS || 'hilada89@gmail.com')
@@ -248,7 +257,7 @@ Check the admin dashboard for details.`;
 }
 
 export async function notifyAdminsCancellation(data: BookingNotification): Promise<void> {
-  const formattedDate = format(parseISO(data.startTime), "EEEE, MMM d 'at' HH:mm");
+  const formattedDate = formatInTimezone(data.startTime, "EEEE, MMM d 'at' HH:mm");
 
   const adminEmails = (process.env.ADMIN_EMAILS || 'hilada89@gmail.com')
     .split(',')
@@ -334,7 +343,7 @@ export async function sendBookingReminder(
   classType: string,
   startTime: string
 ): Promise<boolean> {
-  const formattedDate = format(parseISO(startTime), "EEEE, MMM d 'at' HH:mm");
+  const formattedDate = formatInTimezone(startTime, "EEEE, MMM d 'at' HH:mm");
 
   const message = `⏰ *Reminder: Halo Fitness*
 

@@ -83,6 +83,13 @@ sqlite.exec(`
   );
 `);
 
+// Add class_type column to schedule_configs if it doesn't exist
+try {
+  sqlite.exec(`ALTER TABLE schedule_configs ADD COLUMN class_type TEXT`);
+} catch (e) {
+  // Column already exists, ignore
+}
+
 export const db = drizzle(sqlite, { schema });
 
 export { schema };

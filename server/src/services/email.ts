@@ -1,5 +1,14 @@
 import nodemailer from 'nodemailer';
 import { format, parseISO, addHours } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
+
+const CYPRUS_TIMEZONE = 'Asia/Nicosia';
+
+function formatInTimezone(date: Date | string, formatStr: string): string {
+  const d = typeof date === 'string' ? parseISO(date) : date;
+  const zonedDate = toZonedTime(d, CYPRUS_TIMEZONE);
+  return format(zonedDate, formatStr);
+}
 
 interface BookingEmailData {
   to: string;
@@ -59,8 +68,8 @@ export async function sendBookingConfirmation(data: BookingEmailData): Promise<b
     return false;
   }
 
-  const formattedDate = format(parseISO(data.startTime), "EEEE, MMMM d");
-  const formattedTime = format(parseISO(data.startTime), "HH:mm");
+  const formattedDate = formatInTimezone(data.startTime, "EEEE, MMMM d");
+  const formattedTime = formatInTimezone(data.startTime, "HH:mm");
   const from = process.env.EMAIL_FROM || 'noreply@halofitness.com';
   const calendarLink = generateGoogleCalendarLink(data);
   const profileUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/profile`;
