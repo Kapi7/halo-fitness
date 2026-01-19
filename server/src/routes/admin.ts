@@ -1201,6 +1201,93 @@ router.delete('/user-pricing/:id', async (req, res) => {
   }
 });
 
+// Update booking price
+router.put('/bookings/:id/price', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { price } = req.body;
+
+    if (price === undefined || price === null) {
+      return res.status(400).json({ error: 'Price is required' });
+    }
+
+    const [updated] = await db
+      .update(schema.bookings)
+      .set({ price } as any)
+      .where(eq(schema.bookings.id, id))
+      .returning();
+
+    return res.json({ success: true, booking: updated });
+  } catch (error) {
+    console.error('Update booking price error:', error);
+    return res.status(500).json({ error: 'Failed to update booking price' });
+  }
+});
+
+// Recalculate prices for user's future bookings
+router.post('/users/:id/recalculate-prices', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get user's confirmed bookings
+    const bookings = await db
+      .select()
+      .from(schema.bookings)
+      .where(
+        and(
+          eq(schema.bookings.userId, id),
+          eq(schema.bookings.status, 'confirmed')
+        )
+      );
+
+    const updated = [];
+    for (const booking of bookings) {
+      // Get session details
+      const [session] = await db
+        .select()
+        .from(schema.classSessions)
+        .where(eq(schema.classSessions.id, booking.sessionId))
+        .limit(1);
+
+      if (!session) continue;
+
+      // Check if session is in the future
+      const sessionDate = new Date(session.startTime);
+      if (sessionDate <= new Date()) continue;
+
+      // Calculate new price
+      const priceResult = await calculatePriceForUser(id, session.classType, session.mode);
+
+      // Update if different
+      if (priceResult.price !== booking.price) {
+        const [updatedBooking] = await db
+          .update(schema.bookings)
+          .set({ price: priceResult.price } as any)
+          .where(eq(schema.bookings.id, booking.id))
+          .returning();
+
+        updated.push({
+          bookingId: booking.id,
+          oldPrice: booking.price,
+          newPrice: priceResult.price,
+          classType: session.classType,
+          mode: session.mode,
+          startTime: session.startTime,
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      updated,
+      message: `Updated ${updated.length} booking(s)`
+    });
+  } catch (error) {
+    console.error('Recalculate prices error:', error);
+    return res.status(500).json({ error: 'Failed to recalculate prices' });
+  }
+});
+
 // ============================================
 // ADMIN BOOKING
 // ============================================

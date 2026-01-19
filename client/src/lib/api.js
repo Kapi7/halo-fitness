@@ -342,6 +342,19 @@ class ApiClient {
     });
   }
 
+  async updateBookingPrice(bookingId, price) {
+    return this.request(`/admin/bookings/${bookingId}/price`, {
+      method: 'PUT',
+      body: JSON.stringify({ price }),
+    });
+  }
+
+  async recalculateUserPrices(userId) {
+    return this.request(`/admin/users/${userId}/recalculate-prices`, {
+      method: 'POST',
+    });
+  }
+
   // Admin Booking
   async getBookingPricePreview(userId, classType, mode) {
     const params = new URLSearchParams({ userId, classType, mode });

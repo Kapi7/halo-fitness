@@ -569,6 +569,27 @@ export default function Admin() {
     }
   };
 
+  const handleRecalculatePrices = async () => {
+    if (!selectedUser) return;
+
+    try {
+      const res = await api.recalculateUserPrices(selectedUser.id);
+      if (res.updated && res.updated.length > 0) {
+        toast.success(`Updated ${res.updated.length} booking(s) with new prices`);
+        // Refresh user bookings
+        const bookingsRes = await api.getUserBookings(selectedUser.id);
+        setUserBookings(bookingsRes.bookings || []);
+        // Refresh stats
+        const statsRes = await api.getUserStats(selectedUser.id);
+        setUserStats(statsRes);
+      } else {
+        toast.info('No future bookings needed price updates');
+      }
+    } catch (e) {
+      toast.error('Failed to recalculate prices');
+    }
+  };
+
   // Admin Booking handlers
   const handleAdminBookingDateChange = async (date) => {
     setAdminBooking({ ...adminBooking, startTime: '' });
@@ -1699,6 +1720,18 @@ export default function Admin() {
                             <Plus className="w-4 h-4 mr-2" /> Add Override
                           </Button>
                         </div>
+
+                        <Button
+                          onClick={handleRecalculatePrices}
+                          variant="outline"
+                          className="w-full mt-4 border-orange-300 text-orange-600 hover:bg-orange-50"
+                          size="sm"
+                        >
+                          <DollarSign className="w-4 h-4 mr-2" /> Recalculate Future Bookings
+                        </Button>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Apply current pricing to all future bookings for this user
+                        </p>
                       </div>
                     </TabsContent>
 
