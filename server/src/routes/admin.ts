@@ -327,7 +327,7 @@ router.get('/sessions', async (req, res) => {
       .orderBy(desc(schema.classSessions.startTime))
       .limit(50);
 
-    // Enrich with participants
+    // Enrich with participants and prices
     const enriched = await Promise.all(
       sessions.map(async (s) => {
         const bookings = await db
@@ -344,11 +344,17 @@ router.get('/sessions', async (req, res) => {
               .from(schema.users)
               .where(eq(schema.users.id, b.userId))
               .limit(1);
-            return user || { firstName: 'Unknown', lastName: '' };
+            return {
+              ...(user || { firstName: 'Unknown', lastName: '' }),
+              price: b.price,
+              bookingId: b.id,
+            };
           })
         );
 
-        return { ...s, participants };
+        const totalRevenue = bookings.reduce((sum, b) => sum + (b.price || 0), 0);
+
+        return { ...s, participants, totalRevenue };
       })
     );
 

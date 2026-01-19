@@ -1283,27 +1283,51 @@ export default function Admin() {
                   sessions.map((session) => (
                     <div
                       key={session.id}
-                      className="flex items-center justify-between p-4 border rounded-lg"
+                      className="p-4 border rounded-lg"
                     >
-                      <div>
-                        <div className="font-medium text-lg flex items-center gap-2">
-                          {format(new Date(session.startTime), 'EEE, MMM d, HH:mm')}
-                          <span className="text-sm font-normal text-slate-500">
-                            ({session.classType})
-                          </span>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <div className="font-medium text-lg flex items-center gap-2">
+                            {format(new Date(session.startTime), 'EEE, MMM d, HH:mm')}
+                            <span className="text-sm font-normal text-slate-500">
+                              ({session.classType} - {session.mode})
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-sm text-slate-500 mt-1">
-                          {session.participants?.length || 0} Participants:{' '}
-                          {session.participants?.map((p) => p.firstName).join(', ')}
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-emerald-600">
+                              {session.totalRevenue || 0}€
+                            </div>
+                            <div className="text-xs text-slate-400">Session Revenue</div>
+                          </div>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleCancelSession(session.id)}
+                          >
+                            Cancel
+                          </Button>
                         </div>
                       </div>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleCancelSession(session.id)}
-                      >
-                        Cancel
-                      </Button>
+
+                      {session.participants?.length > 0 ? (
+                        <div className="bg-slate-50 rounded p-3">
+                          <div className="text-xs text-slate-500 mb-2">
+                            {session.participants.length} Participant{session.participants.length > 1 ? 's' : ''}:
+                          </div>
+                          <div className="space-y-1">
+                            {session.participants.map((p, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-sm">
+                                <span>{p.firstName} {p.lastName}</span>
+                                <span className="font-medium text-emerald-600">{p.price}€</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400">No participants yet</p>
+                      )}
                     </div>
                   ))
                 )}
