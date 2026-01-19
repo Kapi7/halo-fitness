@@ -129,10 +129,18 @@ sqlite.exec(`
     tier_id TEXT NOT NULL REFERENCES pricing_tiers(id),
     class_type TEXT NOT NULL,
     mode TEXT NOT NULL,
-    price REAL NOT NULL,
+    price REAL,
+    discount_percent REAL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
+
+// Add discount_percent column to tier_pricing if it doesn't exist
+try {
+  sqlite.exec(`ALTER TABLE tier_pricing ADD COLUMN discount_percent REAL`);
+} catch (e) {
+  // Column already exists, ignore
+}
 
 // Create user_pricing table
 sqlite.exec(`

@@ -1756,33 +1756,15 @@ export default function Admin() {
                   <div className="p-4 border rounded-lg bg-slate-50 space-y-3">
                     <h4 className="font-medium text-sm">Create New Tier</h4>
                     <Input
-                      placeholder="Tier Name (e.g., VIP)"
+                      placeholder="Tier Name (e.g., VIP, Friends & Family)"
                       value={newTier.name}
                       onChange={(e) => setNewTier({ ...newTier, name: e.target.value })}
                     />
                     <Input
-                      placeholder="Description"
+                      placeholder="Description (optional)"
                       value={newTier.description}
                       onChange={(e) => setNewTier({ ...newTier, description: e.target.value })}
                     />
-                    <div className="flex gap-2 items-center">
-                      <Input
-                        type="number"
-                        placeholder="Discount %"
-                        value={newTier.discountPercent}
-                        onChange={(e) =>
-                          setNewTier({ ...newTier, discountPercent: parseFloat(e.target.value) || 0 })
-                        }
-                        className="w-24"
-                      />
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={newTier.isDefault}
-                          onCheckedChange={(checked) => setNewTier({ ...newTier, isDefault: checked })}
-                        />
-                        <span className="text-xs">Default</span>
-                      </div>
-                    </div>
                     <Button onClick={handleCreateTier} className="w-full" size="sm">
                       <Plus className="w-4 h-4 mr-2" /> Create Tier
                     </Button>
@@ -1810,29 +1792,17 @@ export default function Admin() {
                                 <div className="text-xs text-slate-500">{tier.description}</div>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
-                              {tier.discountPercent > 0 && (
-                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                                  {tier.discountPercent}% off
-                                </span>
-                              )}
-                              {tier.isDefault && (
-                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                                  Default
-                                </span>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteTier(tier.id);
-                                }}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTier(tier.id);
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
                           </div>
                         </div>
                       ))
@@ -1849,7 +1819,7 @@ export default function Admin() {
                   {selectedTier ? (
                     <span className="flex items-center gap-2">
                       <Tag className="w-5 h-5" />
-                      {selectedTier.name} - Class Prices
+                      {selectedTier.name} - Pricing Configuration
                     </span>
                   ) : (
                     'Select a Tier'
@@ -1861,7 +1831,7 @@ export default function Admin() {
                   <p className="text-slate-500">Click on a tier to configure its prices.</p>
                 ) : (
                   <div className="space-y-4">
-                    {/* Edit Tier */}
+                    {/* Edit Tier Name */}
                     {editingTier && editingTier.id === selectedTier.id && (
                       <div className="p-4 border rounded-lg bg-slate-50 space-y-3">
                         <h4 className="font-medium text-sm">Edit Tier</h4>
@@ -1877,29 +1847,6 @@ export default function Admin() {
                             setEditingTier({ ...editingTier, description: e.target.value })
                           }
                         />
-                        <div className="flex gap-2 items-center">
-                          <Input
-                            type="number"
-                            placeholder="Discount %"
-                            value={editingTier.discountPercent || 0}
-                            onChange={(e) =>
-                              setEditingTier({
-                                ...editingTier,
-                                discountPercent: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            className="w-24"
-                          />
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              checked={editingTier.isDefault || false}
-                              onCheckedChange={(checked) =>
-                                setEditingTier({ ...editingTier, isDefault: checked })
-                              }
-                            />
-                            <span className="text-xs">Default</span>
-                          </div>
-                        </div>
                         <div className="flex gap-2">
                           <Button onClick={handleUpdateTier} size="sm">
                             Save
@@ -1917,7 +1864,7 @@ export default function Admin() {
                         size="sm"
                         onClick={() => setEditingTier({ ...selectedTier })}
                       >
-                        <Edit2 className="w-4 h-4 mr-2" /> Edit Tier
+                        <Edit2 className="w-4 h-4 mr-2" /> Edit Tier Name
                       </Button>
                     )}
 
@@ -1938,62 +1885,121 @@ export default function Admin() {
 
                     {/* Tier-Specific Prices */}
                     <div>
-                      <h4 className="font-medium mb-2">Custom Tier Prices</h4>
+                      <h4 className="font-medium mb-2">Set Prices for Each Class</h4>
                       <p className="text-xs text-slate-500 mb-4">
-                        Set custom prices for this tier. Leave empty to use discount % on base price.
+                        For each class type, choose either a fixed price OR a discount percentage. Leave both empty to use base price.
                       </p>
 
-                      <div className="space-y-3">
-                        {CLASS_TYPE_OPTIONS.map((ct) =>
-                          MODE_OPTIONS.map((m) => {
-                            const existing = tierPrices.find(
-                              (p) => p.classType === ct.value && p.mode === m.value
-                            );
-                            const basePrice = BASE_PRICES[ct.value]?.[m.value] || 0;
+                      <div className="space-y-4">
+                        {CLASS_TYPE_OPTIONS.map((ct) => (
+                          <div key={ct.value} className="border rounded-lg p-4 bg-slate-50">
+                            <h5 className="font-medium text-sm mb-3 text-halo-pink">{ct.label}</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {MODE_OPTIONS.map((m) => {
+                                const existing = tierPrices.find(
+                                  (p) => p.classType === ct.value && p.mode === m.value
+                                );
+                                const basePrice = BASE_PRICES[ct.value]?.[m.value] || 0;
+                                const priceKey = `${ct.value}-${m.value}`;
+                                const priceMode = existing?.discountPercent !== undefined && existing?.discountPercent !== null
+                                  ? 'discount'
+                                  : 'fixed';
 
-                            return (
-                              <div
-                                key={`${ct.value}-${m.value}`}
-                                className="flex items-center gap-4 p-2 border rounded"
-                              >
-                                <div className="flex-1">
-                                  <span className="font-medium text-sm">{ct.label}</span>
-                                  <span className="text-slate-500 text-sm ml-1">({m.label})</span>
-                                  <span className="text-xs text-slate-400 ml-2">
-                                    Base: {basePrice}€
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Input
-                                    type="number"
-                                    placeholder={
-                                      selectedTier.discountPercent
-                                        ? `${Math.round(basePrice * (1 - selectedTier.discountPercent / 100))}€`
-                                        : `${basePrice}€`
-                                    }
-                                    value={existing?.price || ''}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      const newPrices = tierPrices.filter(
-                                        (p) => !(p.classType === ct.value && p.mode === m.value)
-                                      );
-                                      if (value) {
-                                        newPrices.push({
-                                          classType: ct.value,
-                                          mode: m.value,
-                                          price: parseFloat(value),
-                                        });
-                                      }
-                                      setTierPrices(newPrices);
-                                    }}
-                                    className="w-24 h-8"
-                                  />
-                                  <span className="text-xs text-slate-400">€</span>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
+                                return (
+                                  <div
+                                    key={priceKey}
+                                    className="p-3 bg-white rounded border"
+                                  >
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-sm font-medium">{m.label}</span>
+                                      <span className="text-xs text-slate-400">Base: {basePrice}€</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Select
+                                        value={existing ? (existing.discountPercent !== null ? 'discount' : 'fixed') : 'none'}
+                                        onValueChange={(v) => {
+                                          const newPrices = tierPrices.filter(
+                                            (p) => !(p.classType === ct.value && p.mode === m.value)
+                                          );
+                                          if (v === 'fixed') {
+                                            newPrices.push({
+                                              classType: ct.value,
+                                              mode: m.value,
+                                              price: basePrice,
+                                              discountPercent: null,
+                                            });
+                                          } else if (v === 'discount') {
+                                            newPrices.push({
+                                              classType: ct.value,
+                                              mode: m.value,
+                                              price: null,
+                                              discountPercent: 10,
+                                            });
+                                          }
+                                          setTierPrices(newPrices);
+                                        }}
+                                      >
+                                        <SelectTrigger className="w-28 h-8 text-xs">
+                                          <SelectValue placeholder="Base" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="none">Use Base</SelectItem>
+                                          <SelectItem value="fixed">Fixed €</SelectItem>
+                                          <SelectItem value="discount">% Off</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+
+                                      {existing && existing.discountPercent === null && existing.price !== null && (
+                                        <div className="flex items-center gap-1">
+                                          <Input
+                                            type="number"
+                                            value={existing.price || ''}
+                                            onChange={(e) => {
+                                              const newPrices = tierPrices.map((p) =>
+                                                p.classType === ct.value && p.mode === m.value
+                                                  ? { ...p, price: parseFloat(e.target.value) || 0 }
+                                                  : p
+                                              );
+                                              setTierPrices(newPrices);
+                                            }}
+                                            className="w-20 h-8 text-sm"
+                                          />
+                                          <span className="text-xs text-slate-500">€</span>
+                                        </div>
+                                      )}
+
+                                      {existing && existing.discountPercent !== null && (
+                                        <div className="flex items-center gap-1">
+                                          <Input
+                                            type="number"
+                                            value={existing.discountPercent || ''}
+                                            onChange={(e) => {
+                                              const newPrices = tierPrices.map((p) =>
+                                                p.classType === ct.value && p.mode === m.value
+                                                  ? { ...p, discountPercent: parseFloat(e.target.value) || 0 }
+                                                  : p
+                                              );
+                                              setTierPrices(newPrices);
+                                            }}
+                                            className="w-16 h-8 text-sm"
+                                          />
+                                          <span className="text-xs text-slate-500">%</span>
+                                          <span className="text-xs text-green-600 ml-1">
+                                            = {Math.round(basePrice * (1 - (existing.discountPercent || 0) / 100))}€
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {!existing && (
+                                        <span className="text-sm text-slate-500">{basePrice}€</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
 
                       <Button onClick={handleSaveTierPrices} className="w-full mt-4">

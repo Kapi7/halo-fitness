@@ -784,8 +784,9 @@ router.post('/pricing/tiers/:id/prices', async (req, res) => {
           tierId: id,
           classType: p.classType,
           mode: p.mode,
-          price: p.price,
-        })
+          price: p.price !== undefined && p.price !== null ? p.price : null,
+          discountPercent: p.discountPercent !== undefined && p.discountPercent !== null ? p.discountPercent : null,
+        } as any)
         .returning();
       created.push(price);
     }
@@ -1251,7 +1252,7 @@ async function calculatePriceForUser(
     .limit(1);
 
   if (user?.pricingTierId) {
-    // 3. Check for tier-specific price
+    // 3. Check for tier-specific price or discount for this class
     const [tierPriceRecord] = await db
       .select()
       .from(schema.tierPricing)
@@ -1265,19 +1266,14 @@ async function calculatePriceForUser(
       .limit(1);
 
     if (tierPriceRecord) {
-      return { price: tierPriceRecord.price, source: 'tier_price' };
-    }
-
-    // 4. Check for tier discount
-    const [tier] = await db
-      .select()
-      .from(schema.pricingTiers)
-      .where(eq(schema.pricingTiers.id, user.pricingTierId))
-      .limit(1);
-
-    if (tier && tier.discountPercent && tier.discountPercent > 0) {
-      const discounted = basePrice * (1 - tier.discountPercent / 100);
-      return { price: Math.round(discounted * 100) / 100, source: 'tier_discount' };
+      // Check if it's a fixed price or a discount
+      if (tierPriceRecord.price !== null) {
+        return { price: tierPriceRecord.price, source: 'tier_price' };
+      }
+      if ((tierPriceRecord as any).discountPercent !== null) {
+        const discounted = basePrice * (1 - (tierPriceRecord as any).discountPercent / 100);
+        return { price: Math.round(discounted * 100) / 100, source: 'tier_discount' };
+      }
     }
   }
 

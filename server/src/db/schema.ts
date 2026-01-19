@@ -96,7 +96,7 @@ export const pricingTiers = sqliteTable('pricing_tiers', {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
-// Tier Pricing - class prices per tier
+// Tier Pricing - class prices per tier (either fixed price OR discount percent)
 export const tierPricing = sqliteTable('tier_pricing', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tierId: text('tier_id').notNull().references(() => pricingTiers.id),
@@ -104,7 +104,8 @@ export const tierPricing = sqliteTable('tier_pricing', {
     enum: ['HIIT', 'Pilates Reformer', 'Pilates Clinical Rehab', 'Pilates Matte']
   }).notNull(),
   mode: text('mode', { enum: ['Private', 'Group'] }).notNull(),
-  price: real('price').notNull(),
+  price: real('price'), // Fixed price (nullable - use if discountPercent is null)
+  discountPercent: real('discount_percent'), // Discount % (nullable - use if price is null)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
