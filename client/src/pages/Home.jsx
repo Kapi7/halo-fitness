@@ -99,23 +99,16 @@ export default function Home() {
               </h2>
               <div className="space-y-4 text-slate-600 leading-relaxed text-base sm:text-lg">
                 <p>
-                  Movement has been part of my life from a very young age. I began my path as a ballet dancer
-                  at the age of six, later completing formal dance studies and performing in a variety of styles.
-                  Over time, my deep love for sport and a healthy lifestyle led me into the world of fitness and Pilates.
+                  I've been moving my whole life. Started ballet at six, danced through my teens, and somewhere along the way fell completely in love with fitness and Pilates.
                 </p>
                 <p>
-                  I am a certified fitness and Pilates instructor, specializing in HIIT, mat Pilates, apparatus Pilates,
-                  barre, and rehabilitative training. My approach combines high-energy workouts that deliver real results
-                  with mindful movement and deep body awareness.
+                  Now I'm a certified instructor in HIIT, mat and apparatus Pilates, barre, and rehabilitative training. I mix high-energy workouts with mindful movement because I think you need both.
                 </p>
                 <p>
-                  I believe in working hard — pushing your limits, breaking a sweat, and earning the body you dream of.
-                  But I also believe in balance. Training is a powerful tool for transformation, both physical and mental.
-                  During the most challenging periods of my life, movement became my meditation and my source of resilience.
+                  I like to work hard. I believe in pushing limits, breaking a sweat, and earning real results. But I also know that training isn't just physical. When life got tough, movement kept me grounded.
                 </p>
                 <p className="text-slate-700 font-medium italic">
-                  Today, I share this journey with others — whether you want to sculpt your body, build strength,
-                  or find your inner balance, I'm here to push you and guide you every step of the way.
+                  Whether you want to get stronger, leaner, or just feel better in your body, I'm here to help you get there.
                 </p>
               </div>
 
