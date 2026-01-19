@@ -25,6 +25,7 @@ import {
   MessageSquare,
   Tag,
   CalendarPlus,
+  ExternalLink,
 } from 'lucide-react';
 import {
   Select,
@@ -120,6 +121,7 @@ export default function Admin() {
   const [userSearch, setUserSearch] = useState('');
   const [userFilter, setUserFilter] = useState({ tier: '', isAdmin: '' });
   const [selectedUser, setSelectedUser] = useState(null);
+  const [activeTab, setActiveTab] = useState('schedule');
   const [userStats, setUserStats] = useState(null);
   const [userBookings, setUserBookings] = useState([]);
   const [userNotes, setUserNotes] = useState([]);
@@ -499,6 +501,12 @@ export default function Admin() {
     }
   };
 
+  const handleOpenUserFromSession = async (participant) => {
+    // Switch to users tab and open the user detail panel
+    setActiveTab('users');
+    await handleSelectUser(participant);
+  };
+
   const handleUpdateUser = async () => {
     if (!editingUser) return;
 
@@ -664,7 +672,7 @@ export default function Admin() {
     <div className="max-w-6xl mx-auto px-6 py-12">
       <h1 className="text-3xl font-light text-slate-900 mb-8">Admin Dashboard</h1>
 
-      <Tabs defaultValue="schedule" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="flex-wrap">
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
@@ -1319,7 +1327,13 @@ export default function Admin() {
                           <div className="space-y-1">
                             {session.participants.map((p, idx) => (
                               <div key={idx} className="flex items-center justify-between text-sm">
-                                <span>{p.firstName} {p.lastName}</span>
+                                <button
+                                  onClick={() => handleOpenUserFromSession(p)}
+                                  className="flex items-center gap-1 text-left hover:text-halo-pink transition-colors group"
+                                >
+                                  <span className="group-hover:underline">{p.firstName} {p.lastName}</span>
+                                  <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </button>
                                 <span className="font-medium text-emerald-600">{p.price}€</span>
                               </div>
                             ))}
