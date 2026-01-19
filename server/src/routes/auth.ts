@@ -374,9 +374,13 @@ router.post('/google/callback', async (req, res) => {
       },
       token,
     });
-  } catch (error) {
-    console.error('Google OAuth callback error:', error);
-    return res.status(500).json({ error: 'Google authentication failed' });
+  } catch (error: any) {
+    console.error('Google OAuth callback error:', error?.message || error);
+    console.error('Full error:', JSON.stringify(error?.response?.data || error, null, 2));
+    return res.status(500).json({
+      error: 'Google authentication failed',
+      details: error?.message || 'Unknown error'
+    });
   }
 });
 
