@@ -600,14 +600,15 @@ export default function Admin() {
 
   // Admin Booking handlers
   const handleAdminBookingDateChange = async (date) => {
-    setAdminBooking({ ...adminBooking, startTime: '' });
+    setAdminBooking({ ...adminBooking, startTime: '', date });
     if (!date) {
       setAdminBookingSlots([]);
       return;
     }
 
     try {
-      const res = await api.getAvailability(date);
+      // Use admin-specific endpoint that shows all hours (6:00-22:00)
+      const res = await api.getAdminAvailability(date);
       setAdminBookingSlots(res.slots || []);
     } catch (e) {
       toast.error('Failed to load slots');
@@ -2132,33 +2133,47 @@ export default function Admin() {
 
                 {adminBookingSlots.length > 0 && (
                   <div>
-                    <Label>Available Slots</Label>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                    <Label>Select Time Slot (6:00-22:00)</Label>
+                    <div className="grid grid-cols-4 md:grid-cols-8 gap-2 mt-2">
                       {adminBookingSlots.map((slot, idx) => (
                         <Button
                           key={idx}
                           variant={adminBooking.startTime === slot.start_time ? 'default' : 'outline'}
-                          disabled={slot.status === 'closed' || slot.status === 'full' || slot.status === 'busy'}
+                          disabled={slot.status === 'full'}
                           onClick={() => handleAdminBookingChange('startTime', slot.start_time)}
-                          className="h-auto py-2"
+                          className={`h-auto py-2 ${
+                            slot.status === 'full'
+                              ? 'opacity-50'
+                              : slot.status === 'partial'
+                              ? 'border-amber-400 bg-amber-50'
+                              : ''
+                          }`}
                         >
                           <div className="text-center">
-                            <div className="font-medium">{slot.time}</div>
+                            <div className="font-medium text-sm">{slot.time}</div>
                             <div className="text-xs opacity-70">
-                              {slot.status === 'closed'
-                                ? 'Closed'
-                                : slot.status === 'full'
+                              {slot.status === 'full'
                                 ? 'Full'
-                                : slot.status === 'busy'
-                                ? 'Busy'
                                 : slot.status === 'partial'
-                                ? `${slot.details?.participants || 0}/4`
-                                : 'Open'}
+                                ? `${slot.details?.participants || 0}/4 ${slot.details?.class_type?.split(' ')[0] || ''}`
+                                : ''}
                             </div>
                           </div>
                         </Button>
                       ))}
                     </div>
+                    {adminBooking.startTime && adminBookingSlots.find(s => s.start_time === adminBooking.startTime)?.status === 'partial' && (
+                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                        <div className="font-medium text-amber-800">Existing Session</div>
+                        <div className="text-amber-700">
+                          {adminBookingSlots.find(s => s.start_time === adminBooking.startTime)?.details?.class_type} - {' '}
+                          {adminBookingSlots.find(s => s.start_time === adminBooking.startTime)?.details?.mode}
+                        </div>
+                        <div className="text-amber-600 text-xs mt-1">
+                          Participants: {adminBookingSlots.find(s => s.start_time === adminBooking.startTime)?.details?.participant_names?.join(', ') || 'None'}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

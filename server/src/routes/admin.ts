@@ -1374,6 +1374,109 @@ async function calculatePriceForUser(
   return { price: basePrice, source: 'base' };
 }
 
+// Get all slots for a day (admin booking - no schedule restrictions)
+router.get('/bookings/availability/:date', async (req, res) => {
+  try {
+    const { date } = req.params; // YYYY-MM-DD
+    const timeZone = 'Asia/Nicosia';
+
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+    }
+
+    // Generate all hourly slots from 6:00 to 22:00
+    const slots = [];
+    const startHour = 6;
+    const endHour = 22;
+
+    // Fetch DB sessions for this date
+    const { fromZonedTime } = await import('date-fns-tz');
+    const dayStartISO = fromZonedTime(`${date}T00:00:00`, timeZone).toISOString();
+    const dayEndISO = fromZonedTime(`${date}T23:59:59`, timeZone).toISOString();
+
+    const dbSessions = await db
+      .select()
+      .from(schema.classSessions)
+      .where(
+        and(
+          ne(schema.classSessions.status, 'cancelled'),
+          gte(schema.classSessions.startTime, dayStartISO),
+          lte(schema.classSessions.startTime, dayEndISO)
+        )
+      );
+
+    for (let hour = startHour; hour < endHour; hour++) {
+      const hStr = String(hour).padStart(2, '0');
+      const slotTimeString = `${date}T${hStr}:00:00`;
+      const slotStartDate = fromZonedTime(slotTimeString, timeZone);
+      const { addHours } = await import('date-fns');
+      const slotEndDate = addHours(slotStartDate, 1);
+
+      let status: 'available' | 'full' | 'partial' = 'available';
+      let details: any = null;
+
+      // Check if there's an existing session at this time
+      const existingSession = dbSessions.find((s) => {
+        const sTime = new Date(s.startTime);
+        return Math.abs(sTime.getTime() - slotStartDate.getTime()) < 1000;
+      });
+
+      if (existingSession) {
+        const bookingsForSession = await db
+          .select()
+          .from(schema.bookings)
+          .where(
+            and(
+              eq(schema.bookings.sessionId, existingSession.id),
+              eq(schema.bookings.status, 'confirmed')
+            )
+          );
+
+        const participantCount = bookingsForSession.length;
+
+        // Get participant names
+        let participantNames: string[] = [];
+        for (const booking of bookingsForSession) {
+          const [user] = await db
+            .select()
+            .from(schema.users)
+            .where(eq(schema.users.id, booking.userId))
+            .limit(1);
+          if (user) {
+            participantNames.push(`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email);
+          }
+        }
+
+        details = {
+          session_id: existingSession.id,
+          class_type: existingSession.classType,
+          mode: existingSession.mode,
+          participants: participantCount,
+          participant_names: participantNames,
+        };
+
+        if (existingSession.mode === 'Private' || participantCount >= 4) {
+          status = 'full';
+        } else {
+          status = 'partial';
+        }
+      }
+
+      slots.push({
+        time: `${hStr}:00`,
+        start_time: slotStartDate.toISOString(),
+        status,
+        details,
+      });
+    }
+
+    return res.json({ slots, timeZone });
+  } catch (error) {
+    console.error('Admin availability error:', error);
+    return res.status(500).json({ error: 'Failed to fetch availability' });
+  }
+});
+
 // Get price preview for admin booking
 router.get('/bookings/price-preview', async (req, res) => {
   try {

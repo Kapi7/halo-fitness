@@ -361,6 +361,10 @@ class ApiClient {
     return this.request(`/admin/bookings/price-preview?${params}`);
   }
 
+  async getAdminAvailability(date) {
+    return this.request(`/admin/bookings/availability/${date}`);
+  }
+
   async createAdminBooking(data) {
     return this.request('/admin/bookings', {
       method: 'POST',
