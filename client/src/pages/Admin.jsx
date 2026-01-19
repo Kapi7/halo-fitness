@@ -33,13 +33,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 
 const CLASS_TYPES = [
@@ -1333,14 +1326,14 @@ export default function Admin() {
                       </SelectContent>
                     </Select>
                     <Select
-                      value={userFilter.isAdmin}
-                      onValueChange={(v) => setUserFilter({ ...userFilter, isAdmin: v })}
+                      value={userFilter.isAdmin || 'all'}
+                      onValueChange={(v) => setUserFilter({ ...userFilter, isAdmin: v === 'all' ? '' : v })}
                     >
                       <SelectTrigger className="w-28">
                         <SelectValue placeholder="All" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All</SelectItem>
+                        <SelectItem value="all">All</SelectItem>
                         <SelectItem value="true">Admins</SelectItem>
                         <SelectItem value="false">Non-Admin</SelectItem>
                       </SelectContent>
