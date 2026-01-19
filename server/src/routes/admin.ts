@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { db, schema } from '../db/index.js';
-import { eq, and, ne, gte, desc } from 'drizzle-orm';
+import { eq, and, ne, gte, lte, desc, like, or, asc, sql } from 'drizzle-orm';
 import { addHours, parseISO } from 'date-fns';
 import { authMiddleware, adminMiddleware, AuthRequest } from '../middleware/auth.js';
 import { getCalendarService } from '../services/calendar.js';
+import { sendBookingConfirmation } from '../services/email.js';
+import { notifyAdminsNewBooking } from '../services/notifications.js';
 
 const router = Router();
 
@@ -522,6 +524,940 @@ router.get('/stats', async (req, res) => {
   } catch (error) {
     console.error('Get stats error:', error);
     return res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// ============================================
+// SLOT CLOSURES
+// ============================================
+
+// Create slot closure
+router.post('/schedule/slot-closures', async (req, res) => {
+  try {
+    const { date, startTime, endTime, slotIndex, reason } = req.body;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    // Must have either time range or slot index
+    if (!startTime && slotIndex === undefined) {
+      return res.status(400).json({ error: 'Either time range or slot index is required' });
+    }
+
+    const [closure] = await db
+      .insert(schema.slotClosures)
+      .values({
+        date,
+        startTime: startTime || null,
+        endTime: endTime || null,
+        slotIndex: slotIndex !== undefined ? slotIndex : null,
+        reason: reason || null,
+      })
+      .returning();
+
+    return res.json({ success: true, closure });
+  } catch (error) {
+    console.error('Create slot closure error:', error);
+    return res.status(500).json({ error: 'Failed to create slot closure' });
+  }
+});
+
+// Bulk create slot closures
+router.post('/schedule/slot-closures/bulk', async (req, res) => {
+  try {
+    const { closures } = req.body;
+
+    if (!closures || !Array.isArray(closures) || closures.length === 0) {
+      return res.status(400).json({ error: 'Closures array is required' });
+    }
+
+    const created = [];
+    for (const c of closures) {
+      const [closure] = await db
+        .insert(schema.slotClosures)
+        .values({
+          date: c.date,
+          startTime: c.startTime || null,
+          endTime: c.endTime || null,
+          slotIndex: c.slotIndex !== undefined ? c.slotIndex : null,
+          reason: c.reason || null,
+        })
+        .returning();
+      created.push(closure);
+    }
+
+    return res.json({ success: true, closures: created });
+  } catch (error) {
+    console.error('Bulk create slot closures error:', error);
+    return res.status(500).json({ error: 'Failed to create slot closures' });
+  }
+});
+
+// Get slot closures
+router.get('/schedule/slot-closures', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    let closures;
+    if (startDate && endDate) {
+      closures = await db
+        .select()
+        .from(schema.slotClosures)
+        .where(
+          and(
+            gte(schema.slotClosures.date, startDate as string),
+            lte(schema.slotClosures.date, endDate as string)
+          )
+        )
+        .orderBy(desc(schema.slotClosures.date));
+    } else {
+      closures = await db
+        .select()
+        .from(schema.slotClosures)
+        .orderBy(desc(schema.slotClosures.date))
+        .limit(50);
+    }
+
+    return res.json({ closures });
+  } catch (error) {
+    console.error('Get slot closures error:', error);
+    return res.status(500).json({ error: 'Failed to fetch slot closures' });
+  }
+});
+
+// Delete slot closure
+router.delete('/schedule/slot-closures/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.delete(schema.slotClosures).where(eq(schema.slotClosures.id, id));
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Delete slot closure error:', error);
+    return res.status(500).json({ error: 'Failed to delete slot closure' });
+  }
+});
+
+// ============================================
+// PRICING TIERS
+// ============================================
+
+// Get all pricing tiers
+router.get('/pricing/tiers', async (req, res) => {
+  try {
+    const tiers = await db
+      .select()
+      .from(schema.pricingTiers)
+      .orderBy(asc(schema.pricingTiers.name));
+
+    return res.json({ tiers });
+  } catch (error) {
+    console.error('Get pricing tiers error:', error);
+    return res.status(500).json({ error: 'Failed to fetch pricing tiers' });
+  }
+});
+
+// Create pricing tier
+router.post('/pricing/tiers', async (req, res) => {
+  try {
+    const { name, description, discountPercent, isDefault } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    // If this is the default tier, unset other defaults
+    if (isDefault) {
+      await db
+        .update(schema.pricingTiers)
+        .set({ isDefault: false });
+    }
+
+    const [tier] = await db
+      .insert(schema.pricingTiers)
+      .values({
+        name,
+        description: description || null,
+        discountPercent: discountPercent || 0,
+        isDefault: isDefault || false,
+      })
+      .returning();
+
+    return res.json({ success: true, tier });
+  } catch (error) {
+    console.error('Create pricing tier error:', error);
+    return res.status(500).json({ error: 'Failed to create pricing tier' });
+  }
+});
+
+// Update pricing tier
+router.put('/pricing/tiers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, discountPercent, isDefault } = req.body;
+
+    // If setting as default, unset other defaults
+    if (isDefault) {
+      await db
+        .update(schema.pricingTiers)
+        .set({ isDefault: false });
+    }
+
+    const [tier] = await db
+      .update(schema.pricingTiers)
+      .set({
+        name,
+        description: description || null,
+        discountPercent: discountPercent || 0,
+        isDefault: isDefault || false,
+      })
+      .where(eq(schema.pricingTiers.id, id))
+      .returning();
+
+    return res.json({ success: true, tier });
+  } catch (error) {
+    console.error('Update pricing tier error:', error);
+    return res.status(500).json({ error: 'Failed to update pricing tier' });
+  }
+});
+
+// Delete pricing tier
+router.delete('/pricing/tiers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Remove tier from users
+    await db
+      .update(schema.users)
+      .set({ pricingTierId: null })
+      .where(eq(schema.users.pricingTierId, id));
+
+    // Delete tier pricing entries
+    await db.delete(schema.tierPricing).where(eq(schema.tierPricing.tierId, id));
+
+    // Delete the tier
+    await db.delete(schema.pricingTiers).where(eq(schema.pricingTiers.id, id));
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Delete pricing tier error:', error);
+    return res.status(500).json({ error: 'Failed to delete pricing tier' });
+  }
+});
+
+// Get tier prices
+router.get('/pricing/tiers/:id/prices', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const prices = await db
+      .select()
+      .from(schema.tierPricing)
+      .where(eq(schema.tierPricing.tierId, id));
+
+    return res.json({ prices });
+  } catch (error) {
+    console.error('Get tier prices error:', error);
+    return res.status(500).json({ error: 'Failed to fetch tier prices' });
+  }
+});
+
+// Set tier prices
+router.post('/pricing/tiers/:id/prices', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { prices } = req.body;
+
+    if (!prices || !Array.isArray(prices)) {
+      return res.status(400).json({ error: 'Prices array is required' });
+    }
+
+    // Delete existing prices for this tier
+    await db.delete(schema.tierPricing).where(eq(schema.tierPricing.tierId, id));
+
+    // Insert new prices
+    const created = [];
+    for (const p of prices) {
+      const [price] = await db
+        .insert(schema.tierPricing)
+        .values({
+          tierId: id,
+          classType: p.classType,
+          mode: p.mode,
+          price: p.price,
+        })
+        .returning();
+      created.push(price);
+    }
+
+    return res.json({ success: true, prices: created });
+  } catch (error) {
+    console.error('Set tier prices error:', error);
+    return res.status(500).json({ error: 'Failed to set tier prices' });
+  }
+});
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+// Get users list
+router.get('/users', async (req, res) => {
+  try {
+    const { search, tier, isAdmin, limit = '50', offset = '0' } = req.query;
+
+    let query = db.select().from(schema.users);
+
+    // Build conditions array
+    const conditions = [];
+    if (search) {
+      const searchTerm = `%${search}%`;
+      conditions.push(
+        or(
+          like(schema.users.email, searchTerm),
+          like(schema.users.firstName, searchTerm),
+          like(schema.users.lastName, searchTerm),
+          like(schema.users.phoneNumber, searchTerm)
+        )
+      );
+    }
+    if (tier) {
+      conditions.push(eq(schema.users.pricingTierId, tier as string));
+    }
+    if (isAdmin === 'true') {
+      conditions.push(eq(schema.users.isAdmin, true));
+    } else if (isAdmin === 'false') {
+      conditions.push(eq(schema.users.isAdmin, false));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    const users = await query
+      .orderBy(desc(schema.users.createdAt))
+      .limit(parseInt(limit as string))
+      .offset(parseInt(offset as string));
+
+    // Enrich with booking counts and tier info
+    const enrichedUsers = await Promise.all(
+      users.map(async (user) => {
+        const bookings = await db
+          .select()
+          .from(schema.bookings)
+          .where(eq(schema.bookings.userId, user.id));
+
+        const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
+        const totalSpent = confirmedBookings.reduce((sum, b) => sum + (b.price || 0), 0);
+
+        let tierInfo = null;
+        if (user.pricingTierId) {
+          const [tier] = await db
+            .select()
+            .from(schema.pricingTiers)
+            .where(eq(schema.pricingTiers.id, user.pricingTierId))
+            .limit(1);
+          tierInfo = tier || null;
+        }
+
+        return {
+          ...user,
+          bookingsCount: confirmedBookings.length,
+          totalSpent,
+          tier: tierInfo,
+        };
+      })
+    );
+
+    // Get total count
+    const allUsers = await db.select().from(schema.users);
+    const total = allUsers.length;
+
+    return res.json({ users: enrichedUsers, total });
+  } catch (error) {
+    console.error('Get users error:', error);
+    return res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Get single user with details
+router.get('/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [user] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, id))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get tier info
+    let tierInfo = null;
+    if (user.pricingTierId) {
+      const [tier] = await db
+        .select()
+        .from(schema.pricingTiers)
+        .where(eq(schema.pricingTiers.id, user.pricingTierId))
+        .limit(1);
+      tierInfo = tier || null;
+    }
+
+    // Get user pricing overrides
+    const pricingOverrides = await db
+      .select()
+      .from(schema.userPricing)
+      .where(eq(schema.userPricing.userId, id));
+
+    return res.json({
+      user: {
+        ...user,
+        tier: tierInfo,
+        pricingOverrides,
+      },
+    });
+  } catch (error) {
+    console.error('Get user error:', error);
+    return res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// Update user
+router.put('/users/:id', async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { firstName, lastName, phoneNumber, email, isAdmin, pricingTierId } = req.body;
+
+    const [updated] = await db
+      .update(schema.users)
+      .set({
+        firstName: firstName ?? undefined,
+        lastName: lastName ?? undefined,
+        phoneNumber: phoneNumber ?? undefined,
+        email: email ?? undefined,
+        isAdmin: isAdmin ?? undefined,
+        pricingTierId: pricingTierId === '' ? null : pricingTierId ?? undefined,
+      })
+      .where(eq(schema.users.id, id))
+      .returning();
+
+    return res.json({ success: true, user: updated });
+  } catch (error) {
+    console.error('Update user error:', error);
+    return res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// Get user stats
+router.get('/users/:id/stats', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const bookings = await db
+      .select()
+      .from(schema.bookings)
+      .where(eq(schema.bookings.userId, id));
+
+    const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
+    const cancelledBookings = bookings.filter((b) => b.status === 'cancelled');
+
+    // Get booking details with sessions
+    const bookingDetails = await Promise.all(
+      confirmedBookings.map(async (b) => {
+        const [session] = await db
+          .select()
+          .from(schema.classSessions)
+          .where(eq(schema.classSessions.id, b.sessionId))
+          .limit(1);
+        return { booking: b, session };
+      })
+    );
+
+    // Calculate stats
+    const totalSpent = confirmedBookings.reduce((sum, b) => sum + (b.price || 0), 0);
+    const lastBooking = bookingDetails
+      .filter((d) => d.session)
+      .sort((a, b) => new Date(b.session!.startTime).getTime() - new Date(a.session!.startTime).getTime())[0];
+
+    // Find favorite class type
+    const classTypeCounts: Record<string, number> = {};
+    for (const d of bookingDetails) {
+      if (d.session) {
+        classTypeCounts[d.session.classType] = (classTypeCounts[d.session.classType] || 0) + 1;
+      }
+    }
+    const favoriteClass = Object.entries(classTypeCounts)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+    return res.json({
+      totalBookings: confirmedBookings.length,
+      totalSpent,
+      cancellations: cancelledBookings.length,
+      lastBooking: lastBooking?.session?.startTime || null,
+      favoriteClass,
+    });
+  } catch (error) {
+    console.error('Get user stats error:', error);
+    return res.status(500).json({ error: 'Failed to fetch user stats' });
+  }
+});
+
+// Get user booking history
+router.get('/users/:id/bookings', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = '20', offset = '0' } = req.query;
+
+    const bookings = await db
+      .select()
+      .from(schema.bookings)
+      .where(eq(schema.bookings.userId, id))
+      .orderBy(desc(schema.bookings.createdAt))
+      .limit(parseInt(limit as string))
+      .offset(parseInt(offset as string));
+
+    const enriched = await Promise.all(
+      bookings.map(async (b) => {
+        const [session] = await db
+          .select()
+          .from(schema.classSessions)
+          .where(eq(schema.classSessions.id, b.sessionId))
+          .limit(1);
+        return { ...b, session };
+      })
+    );
+
+    return res.json({ bookings: enriched });
+  } catch (error) {
+    console.error('Get user bookings error:', error);
+    return res.status(500).json({ error: 'Failed to fetch user bookings' });
+  }
+});
+
+// Get user notes
+router.get('/users/:id/notes', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const notes = await db
+      .select()
+      .from(schema.userNotes)
+      .where(eq(schema.userNotes.userId, id))
+      .orderBy(desc(schema.userNotes.createdAt));
+
+    // Enrich with admin info
+    const enriched = await Promise.all(
+      notes.map(async (n) => {
+        const [admin] = await db
+          .select()
+          .from(schema.users)
+          .where(eq(schema.users.id, n.adminId))
+          .limit(1);
+        return {
+          ...n,
+          adminName: admin ? `${admin.firstName || ''} ${admin.lastName || ''}`.trim() || admin.email : 'Unknown',
+        };
+      })
+    );
+
+    return res.json({ notes: enriched });
+  } catch (error) {
+    console.error('Get user notes error:', error);
+    return res.status(500).json({ error: 'Failed to fetch user notes' });
+  }
+});
+
+// Add user note
+router.post('/users/:id/notes', async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+    const adminId = req.user!.id;
+
+    if (!note) {
+      return res.status(400).json({ error: 'Note is required' });
+    }
+
+    const [created] = await db
+      .insert(schema.userNotes)
+      .values({
+        userId: id,
+        adminId,
+        note,
+      })
+      .returning();
+
+    return res.json({ success: true, note: created });
+  } catch (error) {
+    console.error('Add user note error:', error);
+    return res.status(500).json({ error: 'Failed to add user note' });
+  }
+});
+
+// Delete user note
+router.delete('/user-notes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.delete(schema.userNotes).where(eq(schema.userNotes.id, id));
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Delete user note error:', error);
+    return res.status(500).json({ error: 'Failed to delete user note' });
+  }
+});
+
+// Assign tier to user
+router.put('/users/:id/tier', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tierId } = req.body;
+
+    const [updated] = await db
+      .update(schema.users)
+      .set({ pricingTierId: tierId || null })
+      .where(eq(schema.users.id, id))
+      .returning();
+
+    return res.json({ success: true, user: updated });
+  } catch (error) {
+    console.error('Assign tier error:', error);
+    return res.status(500).json({ error: 'Failed to assign tier' });
+  }
+});
+
+// ============================================
+// USER PRICING OVERRIDES
+// ============================================
+
+// Get user pricing overrides
+router.get('/users/:id/pricing', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const pricing = await db
+      .select()
+      .from(schema.userPricing)
+      .where(eq(schema.userPricing.userId, id));
+
+    return res.json({ pricing });
+  } catch (error) {
+    console.error('Get user pricing error:', error);
+    return res.status(500).json({ error: 'Failed to fetch user pricing' });
+  }
+});
+
+// Add user pricing override
+router.post('/users/:id/pricing', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { classType, mode, customPrice, discountPercent } = req.body;
+
+    if (!classType || !mode) {
+      return res.status(400).json({ error: 'Class type and mode are required' });
+    }
+
+    // Remove existing override for same class/mode
+    await db
+      .delete(schema.userPricing)
+      .where(
+        and(
+          eq(schema.userPricing.userId, id),
+          eq(schema.userPricing.classType, classType),
+          eq(schema.userPricing.mode, mode)
+        )
+      );
+
+    const [pricing] = await db
+      .insert(schema.userPricing)
+      .values({
+        userId: id,
+        classType,
+        mode,
+        customPrice: customPrice || null,
+        discountPercent: discountPercent || null,
+      })
+      .returning();
+
+    return res.json({ success: true, pricing });
+  } catch (error) {
+    console.error('Add user pricing error:', error);
+    return res.status(500).json({ error: 'Failed to add user pricing' });
+  }
+});
+
+// Delete user pricing override
+router.delete('/user-pricing/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.delete(schema.userPricing).where(eq(schema.userPricing.id, id));
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Delete user pricing error:', error);
+    return res.status(500).json({ error: 'Failed to delete user pricing' });
+  }
+});
+
+// ============================================
+// ADMIN BOOKING
+// ============================================
+
+// Helper function to calculate price with tiers and overrides
+async function calculatePriceForUser(
+  userId: string,
+  classType: string,
+  mode: string
+): Promise<{ price: number; source: string }> {
+  // Base prices
+  const basePrices: Record<string, Record<string, number>> = {
+    HIIT: { Private: 45, Group: 25 },
+    'Pilates Reformer': { Private: 50, Group: 50 },
+    'Pilates Clinical Rehab': { Private: 75, Group: 75 },
+    'Pilates Matte': { Private: 25, Group: 25 },
+  };
+
+  const basePrice = basePrices[classType]?.[mode] || 0;
+
+  // 1. Check for user-specific custom price
+  const [userPriceOverride] = await db
+    .select()
+    .from(schema.userPricing)
+    .where(
+      and(
+        eq(schema.userPricing.userId, userId),
+        eq(schema.userPricing.classType, classType),
+        eq(schema.userPricing.mode, mode)
+      )
+    )
+    .limit(1);
+
+  if (userPriceOverride) {
+    if (userPriceOverride.customPrice !== null) {
+      return { price: userPriceOverride.customPrice, source: 'user_custom' };
+    }
+    if (userPriceOverride.discountPercent !== null) {
+      const discounted = basePrice * (1 - userPriceOverride.discountPercent / 100);
+      return { price: Math.round(discounted * 100) / 100, source: 'user_discount' };
+    }
+  }
+
+  // 2. Get user's tier
+  const [user] = await db
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+
+  if (user?.pricingTierId) {
+    // 3. Check for tier-specific price
+    const [tierPriceRecord] = await db
+      .select()
+      .from(schema.tierPricing)
+      .where(
+        and(
+          eq(schema.tierPricing.tierId, user.pricingTierId),
+          eq(schema.tierPricing.classType, classType),
+          eq(schema.tierPricing.mode, mode)
+        )
+      )
+      .limit(1);
+
+    if (tierPriceRecord) {
+      return { price: tierPriceRecord.price, source: 'tier_price' };
+    }
+
+    // 4. Check for tier discount
+    const [tier] = await db
+      .select()
+      .from(schema.pricingTiers)
+      .where(eq(schema.pricingTiers.id, user.pricingTierId))
+      .limit(1);
+
+    if (tier && tier.discountPercent && tier.discountPercent > 0) {
+      const discounted = basePrice * (1 - tier.discountPercent / 100);
+      return { price: Math.round(discounted * 100) / 100, source: 'tier_discount' };
+    }
+  }
+
+  // 5. Return base price
+  return { price: basePrice, source: 'base' };
+}
+
+// Get price preview for admin booking
+router.get('/bookings/price-preview', async (req, res) => {
+  try {
+    const { userId, classType, mode } = req.query;
+
+    if (!userId || !classType || !mode) {
+      return res.status(400).json({ error: 'userId, classType, and mode are required' });
+    }
+
+    const result = await calculatePriceForUser(
+      userId as string,
+      classType as string,
+      mode as string
+    );
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Price preview error:', error);
+    return res.status(500).json({ error: 'Failed to calculate price' });
+  }
+});
+
+// Create booking for user (admin)
+router.post('/bookings', async (req: AuthRequest, res) => {
+  try {
+    const { userId, startTime, classType, mode, customPrice, notes } = req.body;
+
+    if (!userId || !startTime || !classType || !mode) {
+      return res.status(400).json({ error: 'userId, startTime, classType, and mode are required' });
+    }
+
+    // Verify user exists
+    const [user] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Calculate price
+    let price: number;
+    if (customPrice !== undefined && customPrice !== null) {
+      price = customPrice;
+    } else {
+      const priceResult = await calculatePriceForUser(userId, classType, mode);
+      price = priceResult.price;
+    }
+
+    // Find or create session
+    const [existingSession] = await db
+      .select()
+      .from(schema.classSessions)
+      .where(
+        and(
+          eq(schema.classSessions.startTime, startTime),
+          ne(schema.classSessions.status, 'cancelled')
+        )
+      )
+      .limit(1);
+
+    let session;
+
+    if (existingSession) {
+      session = existingSession;
+
+      // Validation
+      if (session.mode === 'Private') {
+        return res.status(400).json({ error: 'This slot is already booked for a private session' });
+      }
+
+      // Check capacity
+      const bookings = await db
+        .select()
+        .from(schema.bookings)
+        .where(
+          and(
+            eq(schema.bookings.sessionId, session.id),
+            eq(schema.bookings.status, 'confirmed')
+          )
+        );
+
+      if (bookings.length >= 4) {
+        return res.status(400).json({ error: 'Class is full' });
+      }
+
+      // Check if user already booked
+      const userBooking = bookings.find((b) => b.userId === userId);
+      if (userBooking) {
+        return res.status(400).json({ error: 'User is already booked for this class' });
+      }
+    } else {
+      // Create new session
+      const endTime = addHours(parseISO(startTime), 1).toISOString();
+
+      // Create Google Calendar Event if available
+      let googleEventId: string | null = null;
+      const calendarService = await getCalendarService();
+      if (calendarService) {
+        try {
+          const event = await calendarService.createEvent({
+            summary: `Halo Fitness: ${classType} (${mode})`,
+            description: `Booked by admin for ${user.firstName || user.email}${notes ? `\n\nNotes: ${notes}` : ''}`,
+            startTime,
+            endTime,
+          });
+          googleEventId = event?.id || null;
+        } catch (e) {
+          console.error('Failed to create calendar event:', e);
+        }
+      }
+
+      const [newSession] = await db
+        .insert(schema.classSessions)
+        .values({
+          startTime,
+          endTime,
+          classType,
+          mode,
+          status: 'scheduled',
+          googleEventId,
+        })
+        .returning();
+
+      session = newSession;
+    }
+
+    // Create booking
+    const [booking] = await db
+      .insert(schema.bookings)
+      .values({
+        sessionId: session.id,
+        userId,
+        price,
+        status: 'confirmed',
+      })
+      .returning();
+
+    // Send confirmation email
+    try {
+      await sendBookingConfirmation({
+        to: user.email,
+        firstName: user.firstName || 'there',
+        classType,
+        mode,
+        startTime,
+        price,
+      });
+    } catch (e) {
+      console.error('Failed to send email:', e);
+    }
+
+    // Notify other admins
+    try {
+      notifyAdminsNewBooking({
+        userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        userEmail: user.email,
+        userPhone: user.phoneNumber || undefined,
+        classType,
+        mode,
+        startTime,
+        price,
+      });
+    } catch (e) {
+      console.error('Failed to notify admins:', e);
+    }
+
+    return res.json({ success: true, booking, session });
+  } catch (error) {
+    console.error('Admin create booking error:', error);
+    return res.status(500).json({ error: 'Failed to create booking' });
   }
 });
 

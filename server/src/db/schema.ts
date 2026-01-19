@@ -12,6 +12,7 @@ export const users = sqliteTable('users', {
   isAdmin: integer('is_admin', { mode: 'boolean' }).default(false),
   googleId: text('google_id'), // Google OAuth ID
   avatarUrl: text('avatar_url'), // Profile picture
+  pricingTierId: text('pricing_tier_id'), // FK to pricing_tiers (nullable, no default tier)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -74,6 +75,61 @@ export const userCalendarTokens = sqliteTable('user_calendar_tokens', {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
+// Slot Closures - for closing specific hours/slots
+export const slotClosures = sqliteTable('slot_closures', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  date: text('date').notNull(), // YYYY-MM-DD
+  startTime: text('start_time'), // HH:mm (nullable if using slotIndex)
+  endTime: text('end_time'), // HH:mm (nullable if using slotIndex)
+  slotIndex: integer('slot_index'), // 0-based (nullable if using time range)
+  reason: text('reason'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Pricing Tiers - VIP, Regular, etc.
+export const pricingTiers = sqliteTable('pricing_tiers', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  description: text('description'),
+  discountPercent: real('discount_percent').default(0),
+  isDefault: integer('is_default', { mode: 'boolean' }).default(false),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Tier Pricing - class prices per tier
+export const tierPricing = sqliteTable('tier_pricing', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tierId: text('tier_id').notNull().references(() => pricingTiers.id),
+  classType: text('class_type', {
+    enum: ['HIIT', 'Pilates Reformer', 'Pilates Clinical Rehab', 'Pilates Matte']
+  }).notNull(),
+  mode: text('mode', { enum: ['Private', 'Group'] }).notNull(),
+  price: real('price').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+// User Pricing - individual overrides
+export const userPricing = sqliteTable('user_pricing', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id),
+  classType: text('class_type', {
+    enum: ['HIIT', 'Pilates Reformer', 'Pilates Clinical Rehab', 'Pilates Matte']
+  }).notNull(),
+  mode: text('mode', { enum: ['Private', 'Group'] }).notNull(),
+  customPrice: real('custom_price'), // Specific price override
+  discountPercent: real('discount_percent'), // OR discount percent
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+// User Notes - admin notes about users
+export const userNotes = sqliteTable('user_notes', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id),
+  adminId: text('admin_id').notNull().references(() => users.id),
+  note: text('note').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
 // Types for use in the application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -83,3 +139,13 @@ export type Booking = typeof bookings.$inferSelect;
 export type NewBooking = typeof bookings.$inferInsert;
 export type ScheduleConfig = typeof scheduleConfigs.$inferSelect;
 export type NewScheduleConfig = typeof scheduleConfigs.$inferInsert;
+export type SlotClosure = typeof slotClosures.$inferSelect;
+export type NewSlotClosure = typeof slotClosures.$inferInsert;
+export type PricingTier = typeof pricingTiers.$inferSelect;
+export type NewPricingTier = typeof pricingTiers.$inferInsert;
+export type TierPricing = typeof tierPricing.$inferSelect;
+export type NewTierPricing = typeof tierPricing.$inferInsert;
+export type UserPricing = typeof userPricing.$inferSelect;
+export type NewUserPricing = typeof userPricing.$inferInsert;
+export type UserNote = typeof userNotes.$inferSelect;
+export type NewUserNote = typeof userNotes.$inferInsert;

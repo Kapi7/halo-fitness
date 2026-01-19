@@ -20,8 +20,9 @@ interface SlotDetails {
 interface Slot {
   time: string;
   start_time: string;
-  status: 'available' | 'busy' | 'full' | 'partial' | 'empty';
+  status: 'available' | 'busy' | 'full' | 'partial' | 'empty' | 'closed';
   details: SlotDetails | null;
+  closureReason?: string;
 }
 
 router.get('/:date', async (req, res) => {
@@ -149,6 +150,12 @@ router.get('/:date', async (req, res) => {
         )
       );
 
+    // Fetch slot closures for this date
+    const slotClosures = await db
+      .select()
+      .from(schema.slotClosures)
+      .where(eq(schema.slotClosures.date, date));
+
     // Generate slots
     const slots: Slot[] = [];
     const slotsToGenerate = scheduleConfig.slotsCount || 4;
@@ -170,6 +177,27 @@ router.get('/:date', async (req, res) => {
         status: 'available',
         details: null,
       };
+
+      // Check for slot closures
+      const slotClosure = slotClosures.find((c) => {
+        // Check by slot index
+        if (c.slotIndex !== null && c.slotIndex === i) {
+          return true;
+        }
+        // Check by time range
+        if (c.startTime && c.endTime) {
+          const slotTime = `${hStr}:${mStr}`;
+          return slotTime >= c.startTime && slotTime < c.endTime;
+        }
+        return false;
+      });
+
+      if (slotClosure) {
+        slotStatus.status = 'closed';
+        slotStatus.closureReason = slotClosure.reason || undefined;
+        slots.push(slotStatus);
+        continue;
+      }
 
       // Check calendar busy
       const isBusyInCalendar = busyEvents.some((event) => {

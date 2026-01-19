@@ -90,6 +90,74 @@ try {
   // Column already exists, ignore
 }
 
+// Add pricing_tier_id column to users if it doesn't exist
+try {
+  sqlite.exec(`ALTER TABLE users ADD COLUMN pricing_tier_id TEXT`);
+} catch (e) {
+  // Column already exists, ignore
+}
+
+// Create slot_closures table
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS slot_closures (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    slot_index INTEGER,
+    reason TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Create pricing_tiers table
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS pricing_tiers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    discount_percent REAL DEFAULT 0,
+    is_default INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Create tier_pricing table
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS tier_pricing (
+    id TEXT PRIMARY KEY,
+    tier_id TEXT NOT NULL REFERENCES pricing_tiers(id),
+    class_type TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    price REAL NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Create user_pricing table
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS user_pricing (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    class_type TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    custom_price REAL,
+    discount_percent REAL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Create user_notes table
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS user_notes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    admin_id TEXT NOT NULL REFERENCES users(id),
+    note TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 export const db = drizzle(sqlite, { schema });
 
 export { schema };

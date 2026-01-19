@@ -8,8 +8,39 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Loader2, Trash2, Save, Users, Calendar, Clock, TrendingUp, Lock } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Loader2,
+  Trash2,
+  Save,
+  Users,
+  Calendar,
+  Clock,
+  TrendingUp,
+  Lock,
+  DollarSign,
+  Plus,
+  Search,
+  Edit2,
+  X,
+  MessageSquare,
+  Tag,
+  CalendarPlus,
+} from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 const CLASS_TYPES = [
   { value: '', label: 'User chooses' },
@@ -18,6 +49,25 @@ const CLASS_TYPES = [
   { value: 'Pilates Clinical Rehab', label: 'Pilates Clinical Rehab' },
   { value: 'Pilates Matte', label: 'Pilates Matte' },
 ];
+
+const CLASS_TYPE_OPTIONS = [
+  { value: 'HIIT', label: 'HIIT' },
+  { value: 'Pilates Reformer', label: 'Pilates Reformer' },
+  { value: 'Pilates Clinical Rehab', label: 'Pilates Clinical Rehab' },
+  { value: 'Pilates Matte', label: 'Pilates Matte' },
+];
+
+const MODE_OPTIONS = [
+  { value: 'Private', label: 'Private' },
+  { value: 'Group', label: 'Group' },
+];
+
+const BASE_PRICES = {
+  HIIT: { Private: 45, Group: 25 },
+  'Pilates Reformer': { Private: 50, Group: 50 },
+  'Pilates Clinical Rehab': { Private: 75, Group: 75 },
+  'Pilates Matte': { Private: 25, Group: 25 },
+};
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -49,13 +99,73 @@ export default function Admin() {
   const [weeklyOverrideStep, setWeeklyOverrideStep] = useState('date');
   const [tempWeeklyConfig, setTempWeeklyConfig] = useState([]);
 
+  // Slot Closures state
+  const [slotClosures, setSlotClosures] = useState([]);
+  const [newSlotClosure, setNewSlotClosure] = useState({
+    date: '',
+    closureType: 'time', // 'time' or 'slot'
+    startTime: '',
+    endTime: '',
+    slotIndex: 0,
+    reason: '',
+  });
+
+  // Pricing Tiers state
+  const [pricingTiers, setPricingTiers] = useState([]);
+  const [selectedTier, setSelectedTier] = useState(null);
+  const [tierPrices, setTierPrices] = useState([]);
+  const [newTier, setNewTier] = useState({
+    name: '',
+    description: '',
+    discountPercent: 0,
+    isDefault: false,
+  });
+  const [editingTier, setEditingTier] = useState(null);
+
+  // Users state
+  const [users, setUsers] = useState([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [userFilter, setUserFilter] = useState({ tier: '', isAdmin: '' });
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userStats, setUserStats] = useState(null);
+  const [userBookings, setUserBookings] = useState([]);
+  const [userNotes, setUserNotes] = useState([]);
+  const [newNote, setNewNote] = useState('');
+  const [editingUser, setEditingUser] = useState(null);
+  const [userPricingOverrides, setUserPricingOverrides] = useState([]);
+  const [newUserPricing, setNewUserPricing] = useState({
+    classType: '',
+    mode: '',
+    customPrice: '',
+    discountPercent: '',
+  });
+
+  // Admin Booking state
+  const [adminBooking, setAdminBooking] = useState({
+    userId: '',
+    startTime: '',
+    classType: '',
+    mode: '',
+    customPrice: '',
+  });
+  const [adminBookingSlots, setAdminBookingSlots] = useState([]);
+  const [pricePreview, setPricePreview] = useState(null);
+
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
     try {
-      await Promise.all([fetchDefaults(), fetchOverrides(), fetchSessions(), fetchStats()]);
+      await Promise.all([
+        fetchDefaults(),
+        fetchOverrides(),
+        fetchSessions(),
+        fetchStats(),
+        fetchSlotClosures(),
+        fetchPricingTiers(),
+        fetchUsers(),
+      ]);
     } catch (e) {
       toast.error('Failed to load admin data');
     } finally {
@@ -96,6 +206,38 @@ export default function Admin() {
   const fetchStats = async () => {
     const res = await api.getStats();
     setStats(res || { activeRevenue: 0, pastRevenue: 0 });
+  };
+
+  const fetchSlotClosures = async () => {
+    try {
+      const res = await api.getSlotClosures();
+      setSlotClosures(res.closures || []);
+    } catch (e) {
+      console.error('Failed to fetch slot closures:', e);
+    }
+  };
+
+  const fetchPricingTiers = async () => {
+    try {
+      const res = await api.getPricingTiers();
+      setPricingTiers(res.tiers || []);
+    } catch (e) {
+      console.error('Failed to fetch pricing tiers:', e);
+    }
+  };
+
+  const fetchUsers = async (params = {}) => {
+    try {
+      const res = await api.getUsers({
+        search: userSearch,
+        tier: userFilter.tier,
+        isAdmin: userFilter.isAdmin,
+        ...params,
+      });
+      setUsers(res.users || []);
+    } catch (e) {
+      console.error('Failed to fetch users:', e);
+    }
   };
 
   const handleAddOverride = async () => {
@@ -222,6 +364,272 @@ export default function Admin() {
     }
   };
 
+  // Slot Closures handlers
+  const handleAddSlotClosure = async () => {
+    if (!newSlotClosure.date) return toast.error('Select a date');
+
+    try {
+      const payload = {
+        date: newSlotClosure.date,
+        reason: newSlotClosure.reason || null,
+      };
+
+      if (newSlotClosure.closureType === 'time') {
+        if (!newSlotClosure.startTime || !newSlotClosure.endTime) {
+          return toast.error('Start time and end time are required');
+        }
+        payload.startTime = newSlotClosure.startTime;
+        payload.endTime = newSlotClosure.endTime;
+      } else {
+        payload.slotIndex = parseInt(newSlotClosure.slotIndex);
+      }
+
+      await api.createSlotClosure(payload);
+      toast.success('Slot closure added');
+      setNewSlotClosure({
+        date: '',
+        closureType: 'time',
+        startTime: '',
+        endTime: '',
+        slotIndex: 0,
+        reason: '',
+      });
+      fetchSlotClosures();
+    } catch (e) {
+      toast.error('Failed to add slot closure');
+    }
+  };
+
+  const handleDeleteSlotClosure = async (id) => {
+    try {
+      await api.deleteSlotClosure(id);
+      toast.success('Slot closure removed');
+      fetchSlotClosures();
+    } catch (e) {
+      toast.error('Failed to remove');
+    }
+  };
+
+  // Pricing Tiers handlers
+  const handleCreateTier = async () => {
+    if (!newTier.name) return toast.error('Tier name is required');
+
+    try {
+      await api.createPricingTier(newTier);
+      toast.success('Pricing tier created');
+      setNewTier({ name: '', description: '', discountPercent: 0, isDefault: false });
+      fetchPricingTiers();
+    } catch (e) {
+      toast.error('Failed to create tier');
+    }
+  };
+
+  const handleUpdateTier = async () => {
+    if (!editingTier) return;
+
+    try {
+      await api.updatePricingTier(editingTier.id, editingTier);
+      toast.success('Pricing tier updated');
+      setEditingTier(null);
+      fetchPricingTiers();
+    } catch (e) {
+      toast.error('Failed to update tier');
+    }
+  };
+
+  const handleDeleteTier = async (id) => {
+    if (!confirm('Are you sure? Users with this tier will have it removed.')) return;
+
+    try {
+      await api.deletePricingTier(id);
+      toast.success('Pricing tier deleted');
+      if (selectedTier?.id === id) {
+        setSelectedTier(null);
+        setTierPrices([]);
+      }
+      fetchPricingTiers();
+    } catch (e) {
+      toast.error('Failed to delete tier');
+    }
+  };
+
+  const handleSelectTier = async (tier) => {
+    setSelectedTier(tier);
+    try {
+      const res = await api.getTierPrices(tier.id);
+      setTierPrices(res.prices || []);
+    } catch (e) {
+      toast.error('Failed to load tier prices');
+    }
+  };
+
+  const handleSaveTierPrices = async () => {
+    if (!selectedTier) return;
+
+    try {
+      await api.setTierPrices(selectedTier.id, tierPrices);
+      toast.success('Tier prices saved');
+    } catch (e) {
+      toast.error('Failed to save tier prices');
+    }
+  };
+
+  // User handlers
+  const handleSearchUsers = () => {
+    fetchUsers();
+  };
+
+  const handleSelectUser = async (user) => {
+    setSelectedUser(user);
+    setEditingUser({ ...user });
+
+    try {
+      const [statsRes, bookingsRes, notesRes, pricingRes] = await Promise.all([
+        api.getUserStats(user.id),
+        api.getUserBookings(user.id),
+        api.getUserNotes(user.id),
+        api.getUserPricing(user.id),
+      ]);
+
+      setUserStats(statsRes);
+      setUserBookings(bookingsRes.bookings || []);
+      setUserNotes(notesRes.notes || []);
+      setUserPricingOverrides(pricingRes.pricing || []);
+    } catch (e) {
+      toast.error('Failed to load user details');
+    }
+  };
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
+
+    try {
+      await api.updateUser(editingUser.id, editingUser);
+      toast.success('User updated');
+      fetchUsers();
+      setSelectedUser({ ...selectedUser, ...editingUser });
+    } catch (e) {
+      toast.error('Failed to update user');
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !selectedUser) return;
+
+    try {
+      await api.addUserNote(selectedUser.id, newNote);
+      toast.success('Note added');
+      setNewNote('');
+      const notesRes = await api.getUserNotes(selectedUser.id);
+      setUserNotes(notesRes.notes || []);
+    } catch (e) {
+      toast.error('Failed to add note');
+    }
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    try {
+      await api.deleteUserNote(noteId);
+      toast.success('Note deleted');
+      const notesRes = await api.getUserNotes(selectedUser.id);
+      setUserNotes(notesRes.notes || []);
+    } catch (e) {
+      toast.error('Failed to delete note');
+    }
+  };
+
+  const handleAddUserPricing = async () => {
+    if (!selectedUser || !newUserPricing.classType || !newUserPricing.mode) {
+      return toast.error('Class type and mode are required');
+    }
+
+    try {
+      await api.addUserPricing(selectedUser.id, {
+        classType: newUserPricing.classType,
+        mode: newUserPricing.mode,
+        customPrice: newUserPricing.customPrice ? parseFloat(newUserPricing.customPrice) : null,
+        discountPercent: newUserPricing.discountPercent ? parseFloat(newUserPricing.discountPercent) : null,
+      });
+      toast.success('Pricing override added');
+      setNewUserPricing({ classType: '', mode: '', customPrice: '', discountPercent: '' });
+      const pricingRes = await api.getUserPricing(selectedUser.id);
+      setUserPricingOverrides(pricingRes.pricing || []);
+    } catch (e) {
+      toast.error('Failed to add pricing override');
+    }
+  };
+
+  const handleDeleteUserPricing = async (pricingId) => {
+    try {
+      await api.deleteUserPricing(pricingId);
+      toast.success('Pricing override removed');
+      const pricingRes = await api.getUserPricing(selectedUser.id);
+      setUserPricingOverrides(pricingRes.pricing || []);
+    } catch (e) {
+      toast.error('Failed to remove pricing override');
+    }
+  };
+
+  // Admin Booking handlers
+  const handleAdminBookingDateChange = async (date) => {
+    setAdminBooking({ ...adminBooking, startTime: '' });
+    if (!date) {
+      setAdminBookingSlots([]);
+      return;
+    }
+
+    try {
+      const res = await api.getAvailability(date);
+      setAdminBookingSlots(res.slots || []);
+    } catch (e) {
+      toast.error('Failed to load slots');
+    }
+  };
+
+  const handleAdminBookingChange = async (field, value) => {
+    const updated = { ...adminBooking, [field]: value };
+    setAdminBooking(updated);
+
+    // Fetch price preview when user, class type, and mode are selected
+    if (updated.userId && updated.classType && updated.mode) {
+      try {
+        const res = await api.getBookingPricePreview(
+          updated.userId,
+          updated.classType,
+          updated.mode
+        );
+        setPricePreview(res);
+      } catch (e) {
+        setPricePreview(null);
+      }
+    } else {
+      setPricePreview(null);
+    }
+  };
+
+  const handleCreateAdminBooking = async () => {
+    if (!adminBooking.userId || !adminBooking.startTime || !adminBooking.classType || !adminBooking.mode) {
+      return toast.error('All fields are required');
+    }
+
+    try {
+      await api.createAdminBooking({
+        userId: adminBooking.userId,
+        startTime: adminBooking.startTime,
+        classType: adminBooking.classType,
+        mode: adminBooking.mode,
+        customPrice: adminBooking.customPrice ? parseFloat(adminBooking.customPrice) : undefined,
+      });
+      toast.success('Booking created');
+      setAdminBooking({ userId: '', startTime: '', classType: '', mode: '', customPrice: '' });
+      setAdminBookingSlots([]);
+      setPricePreview(null);
+      fetchSessions();
+    } catch (e) {
+      toast.error(e.message || 'Failed to create booking');
+    }
+  };
+
   const dayName = (d) =>
     ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d];
 
@@ -237,11 +645,15 @@ export default function Admin() {
       <h1 className="text-3xl font-light text-slate-900 mb-8">Admin Dashboard</h1>
 
       <Tabs defaultValue="schedule" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="schedule">Default Schedule</TabsTrigger>
-          <TabsTrigger value="sessions">Manage Sessions</TabsTrigger>
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="schedule">Schedule</TabsTrigger>
+          <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="pricing">Pricing</TabsTrigger>
+          <TabsTrigger value="booking">Book for User</TabsTrigger>
         </TabsList>
 
+        {/* ============== SCHEDULE TAB ============== */}
         <TabsContent value="schedule">
           {/* Stats Overview */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -391,6 +803,120 @@ export default function Admin() {
               <p className="text-xs text-slate-500 mt-2">
                 This will mark all selected days as closed. Maximum 7 days at once.
               </p>
+            </CardContent>
+          </Card>
+
+          {/* Slot Closures Card */}
+          <Card className="mb-6 bg-gradient-to-br from-orange-50 to-white border-orange-100">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center gap-2">
+                <Clock className="w-5 h-5 text-orange-500" /> Slot Closures (Specific Hours)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <Label>Date</Label>
+                    <Input
+                      type="date"
+                      value={newSlotClosure.date}
+                      onChange={(e) => setNewSlotClosure({ ...newSlotClosure, date: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Closure Type</Label>
+                    <Select
+                      value={newSlotClosure.closureType}
+                      onValueChange={(v) => setNewSlotClosure({ ...newSlotClosure, closureType: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="time">Time Range</SelectItem>
+                        <SelectItem value="slot">Slot Index</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {newSlotClosure.closureType === 'time' ? (
+                    <>
+                      <div>
+                        <Label>Start Time</Label>
+                        <Input
+                          type="time"
+                          value={newSlotClosure.startTime}
+                          onChange={(e) => setNewSlotClosure({ ...newSlotClosure, startTime: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>End Time</Label>
+                        <Input
+                          type="time"
+                          value={newSlotClosure.endTime}
+                          onChange={(e) => setNewSlotClosure({ ...newSlotClosure, endTime: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <Label>Slot Index (0-based)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={newSlotClosure.slotIndex}
+                        onChange={(e) => setNewSlotClosure({ ...newSlotClosure, slotIndex: e.target.value })}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1">
+                    <Label>Reason (optional)</Label>
+                    <Input
+                      value={newSlotClosure.reason}
+                      onChange={(e) => setNewSlotClosure({ ...newSlotClosure, reason: e.target.value })}
+                      placeholder="e.g., Personal appointment"
+                    />
+                  </div>
+                  <Button onClick={handleAddSlotClosure} className="bg-orange-500 hover:bg-orange-600">
+                    <Plus className="w-4 h-4 mr-2" /> Add Closure
+                  </Button>
+                </div>
+
+                {slotClosures.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <h4 className="text-sm font-medium text-slate-500">Active Slot Closures</h4>
+                    {slotClosures.map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex items-center justify-between p-3 border rounded-md bg-white text-sm"
+                      >
+                        <div>
+                          <span className="font-medium">{format(new Date(c.date), 'MMM d, yyyy')}</span>
+                          <span className="mx-2 text-slate-300">|</span>
+                          {c.slotIndex !== null ? (
+                            <span className="text-orange-600">Slot #{c.slotIndex}</span>
+                          ) : (
+                            <span className="text-orange-600">{c.startTime} - {c.endTime}</span>
+                          )}
+                          {c.reason && (
+                            <span className="ml-2 text-slate-400">({c.reason})</span>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteSlotClosure(c.id)}
+                          className="h-6 w-6 text-slate-400 hover:text-red-500"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -723,6 +1249,7 @@ export default function Admin() {
           </div>
         </TabsContent>
 
+        {/* ============== SESSIONS TAB ============== */}
         <TabsContent value="sessions">
           <Card>
             <CardHeader>
@@ -760,6 +1287,886 @@ export default function Admin() {
                     </div>
                   ))
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ============== USERS TAB ============== */}
+        <TabsContent value="users">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* User List */}
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" /> Users
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Search by name, email..."
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearchUsers()}
+                    />
+                    <Button size="icon" onClick={handleSearchUsers}>
+                      <Search className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Select
+                      value={userFilter.tier || 'all'}
+                      onValueChange={(v) => setUserFilter({ ...userFilter, tier: v === 'all' ? '' : v })}
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="All Tiers" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Tiers</SelectItem>
+                        {pricingTiers.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={userFilter.isAdmin}
+                      onValueChange={(v) => setUserFilter({ ...userFilter, isAdmin: v })}
+                    >
+                      <SelectTrigger className="w-28">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">All</SelectItem>
+                        <SelectItem value="true">Admins</SelectItem>
+                        <SelectItem value="false">Non-Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    {users.map((user) => (
+                      <div
+                        key={user.id}
+                        onClick={() => handleSelectUser(user)}
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                          selectedUser?.id === user.id
+                            ? 'border-halo-pink bg-pink-50'
+                            : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">
+                          {user.firstName || user.lastName
+                            ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
+                            : user.email}
+                        </div>
+                        <div className="text-xs text-slate-500">{user.email}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          {user.isAdmin && (
+                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                              Admin
+                            </span>
+                          )}
+                          {user.tier && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                              {user.tier.name}
+                            </span>
+                          )}
+                          <span className="text-xs text-slate-400 ml-auto">
+                            {user.bookingsCount} bookings
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* User Detail */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>
+                  {selectedUser ? (
+                    <span className="flex items-center gap-2">
+                      <Edit2 className="w-5 h-5" />
+                      {selectedUser.firstName || selectedUser.email}
+                    </span>
+                  ) : (
+                    'Select a User'
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!selectedUser ? (
+                  <p className="text-slate-500">Click on a user from the list to view details.</p>
+                ) : (
+                  <Tabs defaultValue="profile" className="w-full">
+                    <TabsList className="grid w-full grid-cols-4 mb-4">
+                      <TabsTrigger value="profile">Profile</TabsTrigger>
+                      <TabsTrigger value="stats">Stats</TabsTrigger>
+                      <TabsTrigger value="pricing">Pricing</TabsTrigger>
+                      <TabsTrigger value="notes">Notes</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="profile" className="space-y-4">
+                      {editingUser && (
+                        <>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label>First Name</Label>
+                              <Input
+                                value={editingUser.firstName || ''}
+                                onChange={(e) =>
+                                  setEditingUser({ ...editingUser, firstName: e.target.value })
+                                }
+                              />
+                            </div>
+                            <div>
+                              <Label>Last Name</Label>
+                              <Input
+                                value={editingUser.lastName || ''}
+                                onChange={(e) =>
+                                  setEditingUser({ ...editingUser, lastName: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label>Email</Label>
+                            <Input
+                              value={editingUser.email || ''}
+                              onChange={(e) =>
+                                setEditingUser({ ...editingUser, email: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>Phone</Label>
+                            <Input
+                              value={editingUser.phoneNumber || ''}
+                              onChange={(e) =>
+                                setEditingUser({ ...editingUser, phoneNumber: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                              <Label>Admin</Label>
+                              <Switch
+                                checked={editingUser.isAdmin || false}
+                                onCheckedChange={(checked) =>
+                                  setEditingUser({ ...editingUser, isAdmin: checked })
+                                }
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <Label>Pricing Tier</Label>
+                              <Select
+                                value={editingUser.pricingTierId || 'none'}
+                                onValueChange={(v) =>
+                                  setEditingUser({ ...editingUser, pricingTierId: v === 'none' ? '' : v })
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="No tier" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">No tier</SelectItem>
+                                  {pricingTiers.map((t) => (
+                                    <SelectItem key={t.id} value={t.id}>
+                                      {t.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <Button onClick={handleUpdateUser} className="w-full">
+                            <Save className="w-4 h-4 mr-2" /> Save Changes
+                          </Button>
+                        </>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="stats" className="space-y-4">
+                      {userStats && (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          <Card>
+                            <CardContent className="pt-4">
+                              <div className="text-2xl font-bold text-halo-pink">
+                                {userStats.totalBookings}
+                              </div>
+                              <div className="text-xs text-slate-500">Total Bookings</div>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="pt-4">
+                              <div className="text-2xl font-bold text-emerald-600">
+                                {userStats.totalSpent}€
+                              </div>
+                              <div className="text-xs text-slate-500">Total Spent</div>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="pt-4">
+                              <div className="text-2xl font-bold text-red-500">
+                                {userStats.cancellations}
+                              </div>
+                              <div className="text-xs text-slate-500">Cancellations</div>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="pt-4">
+                              <div className="text-sm font-medium">
+                                {userStats.lastBooking
+                                  ? format(new Date(userStats.lastBooking), 'MMM d, yyyy')
+                                  : 'Never'}
+                              </div>
+                              <div className="text-xs text-slate-500">Last Booking</div>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="pt-4">
+                              <div className="text-sm font-medium">
+                                {userStats.favoriteClass || 'N/A'}
+                              </div>
+                              <div className="text-xs text-slate-500">Favorite Class</div>
+                            </CardContent>
+                          </Card>
+                        </div>
+                      )}
+
+                      <div className="mt-4">
+                        <h4 className="font-medium mb-2">Booking History</h4>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                          {userBookings.length === 0 ? (
+                            <p className="text-sm text-slate-400">No bookings yet.</p>
+                          ) : (
+                            userBookings.map((b) => (
+                              <div
+                                key={b.id}
+                                className="flex items-center justify-between p-2 border rounded text-sm"
+                              >
+                                <div>
+                                  <span className="font-medium">
+                                    {b.session
+                                      ? format(new Date(b.session.startTime), 'MMM d, HH:mm')
+                                      : 'Unknown'}
+                                  </span>
+                                  <span className="text-slate-500 ml-2">
+                                    {b.session?.classType} ({b.session?.mode})
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{b.price}€</span>
+                                  <span
+                                    className={`text-xs px-2 py-0.5 rounded ${
+                                      b.status === 'confirmed'
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-red-100 text-red-700'
+                                    }`}
+                                  >
+                                    {b.status}
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="pricing" className="space-y-4">
+                      <div className="p-4 bg-slate-50 rounded-lg">
+                        <h4 className="font-medium mb-2">Current Tier</h4>
+                        {selectedUser.tier ? (
+                          <div className="flex items-center gap-2">
+                            <Tag className="w-4 h-4 text-blue-600" />
+                            <span className="font-medium">{selectedUser.tier.name}</span>
+                            {selectedUser.tier.discountPercent > 0 && (
+                              <span className="text-sm text-green-600">
+                                ({selectedUser.tier.discountPercent}% discount)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500">No tier assigned</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="font-medium mb-2">Custom Price Overrides</h4>
+                        <div className="space-y-2 mb-4">
+                          {userPricingOverrides.length === 0 ? (
+                            <p className="text-sm text-slate-400">No custom pricing.</p>
+                          ) : (
+                            userPricingOverrides.map((p) => (
+                              <div
+                                key={p.id}
+                                className="flex items-center justify-between p-2 border rounded text-sm"
+                              >
+                                <div>
+                                  <span className="font-medium">{p.classType}</span>
+                                  <span className="text-slate-500 ml-1">({p.mode})</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {p.customPrice && (
+                                    <span className="text-green-600 font-medium">{p.customPrice}€</span>
+                                  )}
+                                  {p.discountPercent && (
+                                    <span className="text-blue-600">{p.discountPercent}% off</span>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => handleDeleteUserPricing(p.id)}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="p-4 border rounded-lg space-y-3">
+                          <h5 className="text-sm font-medium">Add Price Override</h5>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Select
+                              value={newUserPricing.classType}
+                              onValueChange={(v) =>
+                                setNewUserPricing({ ...newUserPricing, classType: v })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Class Type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CLASS_TYPE_OPTIONS.map((ct) => (
+                                  <SelectItem key={ct.value} value={ct.value}>
+                                    {ct.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Select
+                              value={newUserPricing.mode}
+                              onValueChange={(v) =>
+                                setNewUserPricing({ ...newUserPricing, mode: v })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Mode" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {MODE_OPTIONS.map((m) => (
+                                  <SelectItem key={m.value} value={m.value}>
+                                    {m.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-xs">Custom Price (€)</Label>
+                              <Input
+                                type="number"
+                                placeholder="e.g., 30"
+                                value={newUserPricing.customPrice}
+                                onChange={(e) =>
+                                  setNewUserPricing({ ...newUserPricing, customPrice: e.target.value })
+                                }
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">OR Discount (%)</Label>
+                              <Input
+                                type="number"
+                                placeholder="e.g., 20"
+                                value={newUserPricing.discountPercent}
+                                onChange={(e) =>
+                                  setNewUserPricing({ ...newUserPricing, discountPercent: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+                          <Button onClick={handleAddUserPricing} className="w-full" size="sm">
+                            <Plus className="w-4 h-4 mr-2" /> Add Override
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="notes" className="space-y-4">
+                      <div className="flex gap-2">
+                        <Textarea
+                          placeholder="Add a note about this user..."
+                          value={newNote}
+                          onChange={(e) => setNewNote(e.target.value)}
+                          rows={2}
+                        />
+                        <Button onClick={handleAddNote} className="h-auto">
+                          <MessageSquare className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                        {userNotes.length === 0 ? (
+                          <p className="text-sm text-slate-400">No notes yet.</p>
+                        ) : (
+                          userNotes.map((n) => (
+                            <div key={n.id} className="p-3 border rounded-lg">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-slate-500">
+                                  {n.adminName} - {format(new Date(n.createdAt), 'MMM d, yyyy HH:mm')}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={() => handleDeleteNote(n.id)}
+                                >
+                                  <X className="w-3 h-3" />
+                                </Button>
+                              </div>
+                              <p className="text-sm">{n.note}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ============== PRICING TAB ============== */}
+        <TabsContent value="pricing">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Pricing Tiers List */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5" /> Pricing Tiers
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Create New Tier */}
+                  <div className="p-4 border rounded-lg bg-slate-50 space-y-3">
+                    <h4 className="font-medium text-sm">Create New Tier</h4>
+                    <Input
+                      placeholder="Tier Name (e.g., VIP)"
+                      value={newTier.name}
+                      onChange={(e) => setNewTier({ ...newTier, name: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Description"
+                      value={newTier.description}
+                      onChange={(e) => setNewTier({ ...newTier, description: e.target.value })}
+                    />
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        type="number"
+                        placeholder="Discount %"
+                        value={newTier.discountPercent}
+                        onChange={(e) =>
+                          setNewTier({ ...newTier, discountPercent: parseFloat(e.target.value) || 0 })
+                        }
+                        className="w-24"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={newTier.isDefault}
+                          onCheckedChange={(checked) => setNewTier({ ...newTier, isDefault: checked })}
+                        />
+                        <span className="text-xs">Default</span>
+                      </div>
+                    </div>
+                    <Button onClick={handleCreateTier} className="w-full" size="sm">
+                      <Plus className="w-4 h-4 mr-2" /> Create Tier
+                    </Button>
+                  </div>
+
+                  {/* Existing Tiers */}
+                  <div className="space-y-2">
+                    {pricingTiers.length === 0 ? (
+                      <p className="text-sm text-slate-400">No pricing tiers yet.</p>
+                    ) : (
+                      pricingTiers.map((tier) => (
+                        <div
+                          key={tier.id}
+                          onClick={() => handleSelectTier(tier)}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                            selectedTier?.id === tier.id
+                              ? 'border-halo-pink bg-pink-50'
+                              : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">{tier.name}</div>
+                              {tier.description && (
+                                <div className="text-xs text-slate-500">{tier.description}</div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {tier.discountPercent > 0 && (
+                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                                  {tier.discountPercent}% off
+                                </span>
+                              )}
+                              {tier.isDefault && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                  Default
+                                </span>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteTier(tier.id);
+                                }}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tier Detail / Pricing */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>
+                  {selectedTier ? (
+                    <span className="flex items-center gap-2">
+                      <Tag className="w-5 h-5" />
+                      {selectedTier.name} - Class Prices
+                    </span>
+                  ) : (
+                    'Select a Tier'
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!selectedTier ? (
+                  <p className="text-slate-500">Click on a tier to configure its prices.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Edit Tier */}
+                    {editingTier && editingTier.id === selectedTier.id && (
+                      <div className="p-4 border rounded-lg bg-slate-50 space-y-3">
+                        <h4 className="font-medium text-sm">Edit Tier</h4>
+                        <Input
+                          placeholder="Tier Name"
+                          value={editingTier.name}
+                          onChange={(e) => setEditingTier({ ...editingTier, name: e.target.value })}
+                        />
+                        <Input
+                          placeholder="Description"
+                          value={editingTier.description || ''}
+                          onChange={(e) =>
+                            setEditingTier({ ...editingTier, description: e.target.value })
+                          }
+                        />
+                        <div className="flex gap-2 items-center">
+                          <Input
+                            type="number"
+                            placeholder="Discount %"
+                            value={editingTier.discountPercent || 0}
+                            onChange={(e) =>
+                              setEditingTier({
+                                ...editingTier,
+                                discountPercent: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-24"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={editingTier.isDefault || false}
+                              onCheckedChange={(checked) =>
+                                setEditingTier({ ...editingTier, isDefault: checked })
+                              }
+                            />
+                            <span className="text-xs">Default</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button onClick={handleUpdateTier} size="sm">
+                            Save
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setEditingTier(null)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {!editingTier && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditingTier({ ...selectedTier })}
+                      >
+                        <Edit2 className="w-4 h-4 mr-2" /> Edit Tier
+                      </Button>
+                    )}
+
+                    {/* Base Prices Reference */}
+                    <div className="p-4 border rounded-lg bg-blue-50">
+                      <h4 className="font-medium text-sm mb-2">Base Prices (Reference)</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                        {Object.entries(BASE_PRICES).map(([ct, prices]) => (
+                          <div key={ct}>
+                            <div className="font-medium">{ct}</div>
+                            <div className="text-slate-500">
+                              P: {prices.Private}€ / G: {prices.Group}€
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Tier-Specific Prices */}
+                    <div>
+                      <h4 className="font-medium mb-2">Custom Tier Prices</h4>
+                      <p className="text-xs text-slate-500 mb-4">
+                        Set custom prices for this tier. Leave empty to use discount % on base price.
+                      </p>
+
+                      <div className="space-y-3">
+                        {CLASS_TYPE_OPTIONS.map((ct) =>
+                          MODE_OPTIONS.map((m) => {
+                            const existing = tierPrices.find(
+                              (p) => p.classType === ct.value && p.mode === m.value
+                            );
+                            const basePrice = BASE_PRICES[ct.value]?.[m.value] || 0;
+
+                            return (
+                              <div
+                                key={`${ct.value}-${m.value}`}
+                                className="flex items-center gap-4 p-2 border rounded"
+                              >
+                                <div className="flex-1">
+                                  <span className="font-medium text-sm">{ct.label}</span>
+                                  <span className="text-slate-500 text-sm ml-1">({m.label})</span>
+                                  <span className="text-xs text-slate-400 ml-2">
+                                    Base: {basePrice}€
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    placeholder={
+                                      selectedTier.discountPercent
+                                        ? `${Math.round(basePrice * (1 - selectedTier.discountPercent / 100))}€`
+                                        : `${basePrice}€`
+                                    }
+                                    value={existing?.price || ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      const newPrices = tierPrices.filter(
+                                        (p) => !(p.classType === ct.value && p.mode === m.value)
+                                      );
+                                      if (value) {
+                                        newPrices.push({
+                                          classType: ct.value,
+                                          mode: m.value,
+                                          price: parseFloat(value),
+                                        });
+                                      }
+                                      setTierPrices(newPrices);
+                                    }}
+                                    className="w-24 h-8"
+                                  />
+                                  <span className="text-xs text-slate-400">€</span>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      <Button onClick={handleSaveTierPrices} className="w-full mt-4">
+                        <Save className="w-4 h-4 mr-2" /> Save Tier Prices
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ============== ADMIN BOOKING TAB ============== */}
+        <TabsContent value="booking">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarPlus className="w-5 h-5" /> Book for User
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="max-w-2xl space-y-6">
+                <div>
+                  <Label>Select User</Label>
+                  <Select
+                    value={adminBooking.userId}
+                    onValueChange={(v) => handleAdminBookingChange('userId', v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a user..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.firstName || u.lastName
+                            ? `${u.firstName || ''} ${u.lastName || ''}`.trim()
+                            : u.email}{' '}
+                          ({u.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Date</Label>
+                  <Input
+                    type="date"
+                    onChange={(e) => handleAdminBookingDateChange(e.target.value)}
+                  />
+                </div>
+
+                {adminBookingSlots.length > 0 && (
+                  <div>
+                    <Label>Available Slots</Label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                      {adminBookingSlots.map((slot, idx) => (
+                        <Button
+                          key={idx}
+                          variant={adminBooking.startTime === slot.start_time ? 'default' : 'outline'}
+                          disabled={slot.status === 'closed' || slot.status === 'full' || slot.status === 'busy'}
+                          onClick={() => handleAdminBookingChange('startTime', slot.start_time)}
+                          className="h-auto py-2"
+                        >
+                          <div className="text-center">
+                            <div className="font-medium">{slot.time}</div>
+                            <div className="text-xs opacity-70">
+                              {slot.status === 'closed'
+                                ? 'Closed'
+                                : slot.status === 'full'
+                                ? 'Full'
+                                : slot.status === 'busy'
+                                ? 'Busy'
+                                : slot.status === 'partial'
+                                ? `${slot.details?.participants || 0}/4`
+                                : 'Open'}
+                            </div>
+                          </div>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Class Type</Label>
+                    <Select
+                      value={adminBooking.classType}
+                      onValueChange={(v) => handleAdminBookingChange('classType', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select class type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CLASS_TYPE_OPTIONS.map((ct) => (
+                          <SelectItem key={ct.value} value={ct.value}>
+                            {ct.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Mode</Label>
+                    <Select
+                      value={adminBooking.mode}
+                      onValueChange={(v) => handleAdminBookingChange('mode', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select mode..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MODE_OPTIONS.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {pricePreview && (
+                  <div className="p-4 bg-slate-50 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-slate-500">Calculated Price</div>
+                        <div className="text-2xl font-bold text-emerald-600">{pricePreview.price}€</div>
+                        <div className="text-xs text-slate-400">
+                          Source:{' '}
+                          {pricePreview.source === 'user_custom'
+                            ? 'User custom price'
+                            : pricePreview.source === 'user_discount'
+                            ? 'User discount'
+                            : pricePreview.source === 'tier_price'
+                            ? 'Tier price'
+                            : pricePreview.source === 'tier_discount'
+                            ? 'Tier discount'
+                            : 'Base price'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Label className="text-xs">Override Price (optional)</Label>
+                        <Input
+                          type="number"
+                          placeholder={`${pricePreview.price}€`}
+                          value={adminBooking.customPrice}
+                          onChange={(e) =>
+                            setAdminBooking({ ...adminBooking, customPrice: e.target.value })
+                          }
+                          className="w-24"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleCreateAdminBooking}
+                  className="w-full"
+                  disabled={!adminBooking.userId || !adminBooking.startTime || !adminBooking.classType || !adminBooking.mode}
+                >
+                  <CalendarPlus className="w-4 h-4 mr-2" /> Create Booking
+                </Button>
               </div>
             </CardContent>
           </Card>

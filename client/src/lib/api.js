@@ -199,6 +199,161 @@ class ApiClient {
   async getStats() {
     return this.request('/admin/stats');
   }
+
+  // Slot Closures
+  async getSlotClosures(startDate, endDate) {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    const query = params.toString();
+    return this.request(`/admin/schedule/slot-closures${query ? `?${query}` : ''}`);
+  }
+
+  async createSlotClosure(data) {
+    return this.request('/admin/schedule/slot-closures', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async bulkCreateSlotClosures(closures) {
+    return this.request('/admin/schedule/slot-closures/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ closures }),
+    });
+  }
+
+  async deleteSlotClosure(id) {
+    return this.request(`/admin/schedule/slot-closures/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Pricing Tiers
+  async getPricingTiers() {
+    return this.request('/admin/pricing/tiers');
+  }
+
+  async createPricingTier(data) {
+    return this.request('/admin/pricing/tiers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePricingTier(id, data) {
+    return this.request(`/admin/pricing/tiers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePricingTier(id) {
+    return this.request(`/admin/pricing/tiers/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getTierPrices(tierId) {
+    return this.request(`/admin/pricing/tiers/${tierId}/prices`);
+  }
+
+  async setTierPrices(tierId, prices) {
+    return this.request(`/admin/pricing/tiers/${tierId}/prices`, {
+      method: 'POST',
+      body: JSON.stringify({ prices }),
+    });
+  }
+
+  // User Management
+  async getUsers(params = {}) {
+    const searchParams = new URLSearchParams();
+    if (params.search) searchParams.append('search', params.search);
+    if (params.tier) searchParams.append('tier', params.tier);
+    if (params.isAdmin !== undefined) searchParams.append('isAdmin', params.isAdmin);
+    if (params.limit) searchParams.append('limit', params.limit);
+    if (params.offset) searchParams.append('offset', params.offset);
+    const query = searchParams.toString();
+    return this.request(`/admin/users${query ? `?${query}` : ''}`);
+  }
+
+  async getUser(id) {
+    return this.request(`/admin/users/${id}`);
+  }
+
+  async updateUser(id, data) {
+    return this.request(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getUserStats(id) {
+    return this.request(`/admin/users/${id}/stats`);
+  }
+
+  async getUserBookings(id, params = {}) {
+    const searchParams = new URLSearchParams();
+    if (params.limit) searchParams.append('limit', params.limit);
+    if (params.offset) searchParams.append('offset', params.offset);
+    const query = searchParams.toString();
+    return this.request(`/admin/users/${id}/bookings${query ? `?${query}` : ''}`);
+  }
+
+  async getUserNotes(id) {
+    return this.request(`/admin/users/${id}/notes`);
+  }
+
+  async addUserNote(userId, note) {
+    return this.request(`/admin/users/${userId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    });
+  }
+
+  async deleteUserNote(noteId) {
+    return this.request(`/admin/user-notes/${noteId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async assignUserTier(userId, tierId) {
+    return this.request(`/admin/users/${userId}/tier`, {
+      method: 'PUT',
+      body: JSON.stringify({ tierId }),
+    });
+  }
+
+  // User Pricing Overrides
+  async getUserPricing(userId) {
+    return this.request(`/admin/users/${userId}/pricing`);
+  }
+
+  async addUserPricing(userId, data) {
+    return this.request(`/admin/users/${userId}/pricing`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteUserPricing(pricingId) {
+    return this.request(`/admin/user-pricing/${pricingId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Admin Booking
+  async getBookingPricePreview(userId, classType, mode) {
+    const params = new URLSearchParams({ userId, classType, mode });
+    return this.request(`/admin/bookings/price-preview?${params}`);
+  }
+
+  async createAdminBooking(data) {
+    return this.request('/admin/bookings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();
