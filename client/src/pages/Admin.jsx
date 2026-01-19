@@ -150,16 +150,22 @@ export default function Admin() {
 
   const loadData = async () => {
     try {
+      // Load core data first
       await Promise.all([
         fetchDefaults(),
         fetchOverrides(),
         fetchSessions(),
         fetchStats(),
+      ]);
+
+      // Load new features separately so failures don't break the page
+      await Promise.allSettled([
         fetchSlotClosures(),
         fetchPricingTiers(),
         fetchUsers(),
       ]);
     } catch (e) {
+      console.error('Failed to load admin data:', e);
       toast.error('Failed to load admin data');
     } finally {
       setLoading(false);
