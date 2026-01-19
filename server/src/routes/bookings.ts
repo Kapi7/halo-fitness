@@ -10,6 +10,45 @@ import { google } from 'googleapis';
 
 const router = Router();
 
+// Helper to get valid user calendar client
+async function getUserCalendarClient(userId: string) {
+  const [token] = await db
+    .select()
+    .from(schema.userCalendarTokens)
+    .where(eq(schema.userCalendarTokens.userId, userId))
+    .limit(1);
+
+  if (!token) return null;
+
+  const client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
+
+  // Check if token is expired and refresh if needed
+  const expiresAt = token.expiresAt ? new Date(token.expiresAt) : null;
+  let accessToken = token.accessToken;
+
+  if (expiresAt && expiresAt < new Date() && token.refreshToken) {
+    client.setCredentials({ refresh_token: token.refreshToken });
+    const { credentials } = await client.refreshAccessToken();
+    accessToken = credentials.access_token!;
+
+    await db
+      .update(schema.userCalendarTokens)
+      .set({
+        accessToken,
+        expiresAt: credentials.expiry_date
+          ? new Date(credentials.expiry_date).toISOString()
+          : null,
+      })
+      .where(eq(schema.userCalendarTokens.id, token.id));
+  }
+
+  client.setCredentials({ access_token: accessToken });
+  return client;
+}
+
 // Helper to add event to user's personal Google Calendar
 async function addToUserCalendar(userId: string, event: {
   summary: string;
@@ -18,40 +57,9 @@ async function addToUserCalendar(userId: string, event: {
   endTime: string;
 }): Promise<string | null> {
   try {
-    const [token] = await db
-      .select()
-      .from(schema.userCalendarTokens)
-      .where(eq(schema.userCalendarTokens.userId, userId))
-      .limit(1);
+    const client = await getUserCalendarClient(userId);
+    if (!client) return null;
 
-    if (!token) return null;
-
-    const client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
-
-    // Check if token is expired and refresh if needed
-    const expiresAt = token.expiresAt ? new Date(token.expiresAt) : null;
-    let accessToken = token.accessToken;
-
-    if (expiresAt && expiresAt < new Date() && token.refreshToken) {
-      client.setCredentials({ refresh_token: token.refreshToken });
-      const { credentials } = await client.refreshAccessToken();
-      accessToken = credentials.access_token!;
-
-      await db
-        .update(schema.userCalendarTokens)
-        .set({
-          accessToken,
-          expiresAt: credentials.expiry_date
-            ? new Date(credentials.expiry_date).toISOString()
-            : null,
-        })
-        .where(eq(schema.userCalendarTokens.id, token.id));
-    }
-
-    client.setCredentials({ access_token: accessToken });
     const calendar = google.calendar({ version: 'v3', auth: client });
 
     const response = await calendar.events.insert({
@@ -75,6 +83,26 @@ async function addToUserCalendar(userId: string, event: {
   } catch (error) {
     console.error('Failed to add to user calendar:', error);
     return null;
+  }
+}
+
+// Helper to delete event from user's personal Google Calendar
+async function deleteFromUserCalendar(userId: string, eventId: string): Promise<boolean> {
+  try {
+    const client = await getUserCalendarClient(userId);
+    if (!client) return false;
+
+    const calendar = google.calendar({ version: 'v3', auth: client });
+
+    await calendar.events.delete({
+      calendarId: 'primary',
+      eventId,
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Failed to delete from user calendar:', error);
+    return false;
   }
 }
 
@@ -190,6 +218,20 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       session = newSession;
     }
 
+    // Add to user's Google Calendar if connected (do this before creating booking to get event ID)
+    let userCalendarEventId: string | null = null;
+    try {
+      const endTime = addHours(parseISO(start_time), 1).toISOString();
+      userCalendarEventId = await addToUserCalendar(userId, {
+        summary: `Halo Fitness: ${class_type} (${mode})`,
+        description: `Your ${mode.toLowerCase()} ${class_type} session at Halo Fitness.\n\nPrice: ${price}€\n\nCancellation policy: Free cancellation up to 24 hours before the class.`,
+        startTime: start_time,
+        endTime,
+      });
+    } catch (e) {
+      console.error('Failed to add to user calendar:', e);
+    }
+
     // Create booking
     const [booking] = await db
       .insert(schema.bookings)
@@ -198,6 +240,7 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
         userId,
         price,
         status: 'confirmed',
+        userCalendarEventId, // Store the user's calendar event ID for cancellation
       })
       .returning();
 
@@ -221,20 +264,6 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       }
     } catch (e) {
       console.error('Failed to send email:', e);
-    }
-
-    // Add to user's Google Calendar if connected
-    let userCalendarEventId: string | null = null;
-    try {
-      const endTime = addHours(parseISO(start_time), 1).toISOString();
-      userCalendarEventId = await addToUserCalendar(userId, {
-        summary: `Halo Fitness: ${class_type} (${mode})`,
-        description: `Your ${mode.toLowerCase()} ${class_type} session at Halo Fitness.\n\nPrice: ${price}€\n\nCancellation policy: Free cancellation up to 24 hours before the class.`,
-        startTime: start_time,
-        endTime,
-      });
-    } catch (e) {
-      console.error('Failed to add to user calendar:', e);
     }
 
     // Notify admins about new booking
@@ -346,6 +375,15 @@ router.delete('/:id', authMiddleware, async (req: AuthRequest, res) => {
       .update(schema.bookings)
       .set({ status: 'cancelled' })
       .where(eq(schema.bookings.id, id));
+
+    // Delete from user's personal Google Calendar if event was synced
+    if (booking.userCalendarEventId) {
+      try {
+        await deleteFromUserCalendar(userId, booking.userCalendarEventId);
+      } catch (e) {
+        console.error('Failed to delete from user calendar:', e);
+      }
+    }
 
     // Notify admins about cancellation
     try {

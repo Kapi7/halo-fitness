@@ -36,6 +36,7 @@ export const bookings = sqliteTable('bookings', {
   userId: text('user_id').notNull().references(() => users.id),
   price: real('price').notNull(),
   status: text('status', { enum: ['confirmed', 'cancelled'] }).default('confirmed'),
+  userCalendarEventId: text('user_calendar_event_id'), // User's personal Google Calendar event ID
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
