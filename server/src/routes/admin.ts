@@ -6,6 +6,7 @@ import { authMiddleware, adminMiddleware, AuthRequest } from '../middleware/auth
 import { getCalendarService } from '../services/calendar.js';
 import { sendBookingConfirmation } from '../services/email.js';
 import { notifyAdminsNewBooking } from '../services/notifications.js';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 
@@ -884,6 +885,58 @@ router.get('/users', async (req, res) => {
   } catch (error) {
     console.error('Get users error:', error);
     return res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Create user (admin)
+router.post('/users', async (req, res) => {
+  try {
+    const { email, firstName, lastName, phoneNumber, generatePassword } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Check if user already exists
+    const [existingUser] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, email.toLowerCase()))
+      .limit(1);
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    // Generate password if requested
+    let passwordHash = null;
+    let generatedPassword = null;
+    if (generatePassword) {
+      // Generate a random 8-character password
+      generatedPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+      passwordHash = await bcrypt.hash(generatedPassword, 10);
+    }
+
+    // Create user
+    const [newUser] = await db
+      .insert(schema.users)
+      .values({
+        email: email.toLowerCase(),
+        firstName: firstName || null,
+        lastName: lastName || null,
+        phoneNumber: phoneNumber || null,
+        passwordHash,
+        isAdmin: false,
+      })
+      .returning();
+
+    return res.json({
+      user: newUser,
+      generatedPassword, // Only returned if generatePassword was true
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    return res.status(500).json({ error: 'Failed to create user' });
   }
 });
 

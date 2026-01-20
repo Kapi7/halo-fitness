@@ -277,6 +277,13 @@ class ApiClient {
     return this.request(`/admin/users${query ? `?${query}` : ''}`);
   }
 
+  async createUser(data) {
+    return this.request('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async getUser(id) {
     return this.request(`/admin/users/${id}`);
   }

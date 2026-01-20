@@ -146,6 +146,17 @@ export default function Admin() {
   const [adminBookingSlots, setAdminBookingSlots] = useState([]);
   const [pricePreview, setPricePreview] = useState(null);
 
+  // Create User state
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUser, setNewUser] = useState({
+    email: '',
+    firstName: '',
+    lastName: '',
+    phoneNumber: '',
+    generatePassword: true,
+  });
+  const [createdUserPassword, setCreatedUserPassword] = useState(null);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -657,6 +668,40 @@ export default function Admin() {
     } catch (e) {
       toast.error(e.message || 'Failed to create booking');
     }
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUser.email) {
+      return toast.error('Email is required');
+    }
+
+    try {
+      const res = await api.createUser(newUser);
+      toast.success('User created successfully');
+
+      // If a password was generated, show it
+      if (res.generatedPassword) {
+        setCreatedUserPassword(res.generatedPassword);
+      }
+
+      // Refresh users list and select the new user
+      await fetchUsers();
+      setAdminBooking({ ...adminBooking, userId: res.user.id });
+
+      // Reset form but keep showing result if password was generated
+      if (!res.generatedPassword) {
+        setShowCreateUser(false);
+        setNewUser({ email: '', firstName: '', lastName: '', phoneNumber: '', generatePassword: true });
+      }
+    } catch (e) {
+      toast.error(e.message || 'Failed to create user');
+    }
+  };
+
+  const handleCloseCreateUser = () => {
+    setShowCreateUser(false);
+    setNewUser({ email: '', firstName: '', lastName: '', phoneNumber: '', generatePassword: true });
+    setCreatedUserPassword(null);
   };
 
   const dayName = (d) =>
@@ -2102,25 +2147,106 @@ export default function Admin() {
             <CardContent>
               <div className="max-w-2xl space-y-6">
                 <div>
-                  <Label>Select User</Label>
-                  <Select
-                    value={adminBooking.userId}
-                    onValueChange={(v) => handleAdminBookingChange('userId', v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a user..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.firstName || u.lastName
-                            ? `${u.firstName || ''} ${u.lastName || ''}`.trim()
-                            : u.email}{' '}
-                          ({u.email})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label>Select User</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowCreateUser(!showCreateUser)}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      {showCreateUser ? 'Cancel' : 'New User'}
+                    </Button>
+                  </div>
+
+                  {showCreateUser ? (
+                    <div className="border rounded-lg p-4 space-y-4 bg-slate-50">
+                      {createdUserPassword ? (
+                        <div className="space-y-4">
+                          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                            <div className="font-medium text-emerald-800 mb-2">User Created Successfully!</div>
+                            <div className="text-sm text-emerald-700">
+                              <p><strong>Email:</strong> {newUser.email}</p>
+                              <p><strong>Password:</strong> <code className="bg-emerald-100 px-2 py-1 rounded">{createdUserPassword}</code></p>
+                              <p className="text-xs mt-2 text-emerald-600">Share this password with the user. They can also login with Google if using a Gmail address.</p>
+                            </div>
+                          </div>
+                          <Button onClick={handleCloseCreateUser} variant="outline" className="w-full">
+                            Done
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs">Email *</Label>
+                              <Input
+                                type="email"
+                                placeholder="user@example.com"
+                                value={newUser.email}
+                                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Phone</Label>
+                              <Input
+                                placeholder="+357..."
+                                value={newUser.phoneNumber}
+                                onChange={(e) => setNewUser({ ...newUser, phoneNumber: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs">First Name</Label>
+                              <Input
+                                placeholder="John"
+                                value={newUser.firstName}
+                                onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Last Name</Label>
+                              <Input
+                                placeholder="Doe"
+                                value={newUser.lastName}
+                                onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={newUser.generatePassword}
+                              onCheckedChange={(v) => setNewUser({ ...newUser, generatePassword: v })}
+                            />
+                            <Label className="text-sm">Generate password (user can also login with Google)</Label>
+                          </div>
+                          <Button onClick={handleCreateUser} className="w-full">
+                            <Plus className="w-4 h-4 mr-2" /> Create User
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <Select
+                      value={adminBooking.userId}
+                      onValueChange={(v) => handleAdminBookingChange('userId', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a user..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.firstName || u.lastName
+                              ? `${u.firstName || ''} ${u.lastName || ''}`.trim()
+                              : u.email}{' '}
+                            ({u.email})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
 
                 <div>
