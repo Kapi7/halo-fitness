@@ -1555,7 +1555,7 @@ router.get('/bookings/price-preview', async (req, res) => {
 // Create booking for user (admin)
 router.post('/bookings', async (req: AuthRequest, res) => {
   try {
-    const { userId, startTime, classType, mode, customPrice, notes } = req.body;
+    const { userId, startTime, classType, mode, customPrice, notes, clientName, clientPhone } = req.body;
 
     if (!userId || !startTime || !classType || !mode) {
       return res.status(400).json({ error: 'userId, startTime, classType, and mode are required' });
@@ -1618,9 +1618,10 @@ router.post('/bookings', async (req: AuthRequest, res) => {
         return res.status(400).json({ error: 'Class is full' });
       }
 
-      // Check if user already booked
+      // Check if user already booked (skip for admin users booking themselves)
       const userBooking = bookings.find((b) => b.userId === userId);
-      if (userBooking) {
+      const bookingUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+      if (userBooking && !(bookingUser[0]?.isAdmin)) {
         return res.status(400).json({ error: 'User is already booked for this class' });
       }
     } else {
@@ -1667,6 +1668,8 @@ router.post('/bookings', async (req: AuthRequest, res) => {
         userId,
         price,
         status: 'confirmed',
+        clientName: clientName || null,
+        clientPhone: clientPhone || null,
       })
       .returning();
 
@@ -1703,6 +1706,54 @@ router.post('/bookings', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Admin create booking error:', error);
     return res.status(500).json({ error: 'Failed to create booking' });
+  }
+});
+
+// ============================================
+// APP SETTINGS (Registration Opening)
+// ============================================
+
+// Get registration settings
+router.get('/settings/registration', async (req, res) => {
+  try {
+    const settings = await db.select().from(schema.appSettings);
+    const settingsMap: Record<string, string> = {};
+    for (const s of settings) {
+      settingsMap[s.key] = s.value;
+    }
+    return res.json({
+      enabled: settingsMap['registration_open_enabled'] === 'true',
+      dayOfWeek: parseInt(settingsMap['registration_open_day'] || '5'),
+      time: settingsMap['registration_open_time'] || '08:00',
+    });
+  } catch (error) {
+    console.error('Get registration settings error:', error);
+    return res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+// Update registration settings
+router.put('/settings/registration', async (req, res) => {
+  try {
+    const { enabled, dayOfWeek, time } = req.body;
+
+    const upsert = async (key: string, value: string) => {
+      const [existing] = await db.select().from(schema.appSettings).where(eq(schema.appSettings.key, key)).limit(1);
+      if (existing) {
+        await db.update(schema.appSettings).set({ value, updatedAt: new Date().toISOString() }).where(eq(schema.appSettings.key, key));
+      } else {
+        await db.insert(schema.appSettings).values({ key, value });
+      }
+    };
+
+    if (enabled !== undefined) await upsert('registration_open_enabled', String(enabled));
+    if (dayOfWeek !== undefined) await upsert('registration_open_day', String(dayOfWeek));
+    if (time !== undefined) await upsert('registration_open_time', time);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Update registration settings error:', error);
+    return res.status(500).json({ error: 'Failed to update settings' });
   }
 });
 

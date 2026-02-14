@@ -62,11 +62,16 @@ export default function Schedule() {
     }
   }, [selectedDate]);
 
+  const [registrationLocked, setRegistrationLocked] = useState(false);
+  const [lockMessage, setLockMessage] = useState('');
+
   const fetchSlots = async (date) => {
     setLoading(true);
     try {
       const response = await api.getAvailability(format(date, 'yyyy-MM-dd'));
       setSlots(response.slots || []);
+      setRegistrationLocked(response.registrationLocked || false);
+      setLockMessage(response.message || '');
     } catch (error) {
       toast.error('Failed to fetch availability');
     } finally {
@@ -174,7 +179,13 @@ export default function Schedule() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <AnimatePresence mode="wait">
-                {slots.length === 0 && !loading ? (
+                {registrationLocked && !loading ? (
+                  <div className="col-span-2 text-center py-12 text-slate-400 bg-white rounded-xl border border-dashed border-amber-200">
+                    <Info className="w-8 h-8 mx-auto mb-2 opacity-50 text-amber-500" />
+                    <p className="text-amber-600 font-medium">{lockMessage}</p>
+                    <p className="text-sm mt-2">Check back later for availability.</p>
+                  </div>
+                ) : slots.length === 0 && !loading ? (
                   <div className="col-span-2 text-center py-12 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
                     <Info className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     <p>No slots available for this date.</p>
@@ -317,7 +328,10 @@ function BookingModal({ open, onOpenChange, slot, user, onSuccess }) {
     last_name: '',
     phone_number: '',
   });
+  const [bookForClient, setBookForClient] = useState(false);
+  const [clientInfo, setClientInfo] = useState({ name: '', phone: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isAdmin = user?.isAdmin;
 
   useEffect(() => {
     if (open && user) {
@@ -326,6 +340,8 @@ function BookingModal({ open, onOpenChange, slot, user, onSuccess }) {
         last_name: user.lastName || '',
         phone_number: user.phoneNumber || '',
       });
+      setBookForClient(false);
+      setClientInfo({ name: '', phone: '' });
 
       if (slot?.details) {
         setBookingData({
@@ -341,20 +357,36 @@ function BookingModal({ open, onOpenChange, slot, user, onSuccess }) {
   const handleBook = async () => {
     setIsSubmitting(true);
     try {
-      if (!contactInfo.first_name || !contactInfo.last_name || !contactInfo.phone_number) {
-        toast.error('Please fill in all contact details');
-        setIsSubmitting(false);
-        return;
+      if (bookForClient) {
+        if (!clientInfo.name || !clientInfo.phone) {
+          toast.error('Please fill in client name and phone');
+          setIsSubmitting(false);
+          return;
+        }
+      } else {
+        if (!contactInfo.first_name || !contactInfo.last_name || !contactInfo.phone_number) {
+          toast.error('Please fill in all contact details');
+          setIsSubmitting(false);
+          return;
+        }
       }
 
-      const result = await api.createBooking({
+      const payload = {
         start_time: slot.start_time,
         class_type: bookingData.class_type,
         mode: bookingData.mode,
-        user_info: contactInfo,
-      });
+        ...(bookForClient
+          ? { client_name: clientInfo.name, client_phone: clientInfo.phone }
+          : { user_info: contactInfo }),
+      };
 
+      const result = await api.createBooking(payload);
       onSuccess(result.calendarAdded || false);
+
+      // Reset client info for next booking
+      if (bookForClient) {
+        setClientInfo({ name: '', phone: '' });
+      }
     } catch (error) {
       toast.error(error.message || 'Booking failed');
     } finally {
@@ -459,35 +491,78 @@ function BookingModal({ open, onOpenChange, slot, user, onSuccess }) {
             )}
 
             <div className="space-y-4 pt-4 border-t">
-              <h4 className="font-medium text-sm text-slate-900">Your Details</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">First Name</Label>
-                  <Input
-                    value={contactInfo.first_name}
-                    onChange={(e) => setContactInfo({ ...contactInfo, first_name: e.target.value })}
-                    className="h-8"
+              {isAdmin && (
+                <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg border border-purple-100">
+                  <input
+                    type="checkbox"
+                    id="bookForClient"
+                    checked={bookForClient}
+                    onChange={(e) => setBookForClient(e.target.checked)}
+                    className="rounded border-purple-300"
                   />
+                  <Label htmlFor="bookForClient" className="text-sm text-purple-700 cursor-pointer">
+                    Book on behalf of a client
+                  </Label>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Last Name</Label>
-                  <Input
-                    value={contactInfo.last_name}
-                    onChange={(e) => setContactInfo({ ...contactInfo, last_name: e.target.value })}
-                    className="h-8"
-                  />
-                </div>
-                <div className="col-span-2 space-y-1">
-                  <Label className="text-xs">Phone Number</Label>
-                  <Input
-                    value={contactInfo.phone_number}
-                    onChange={(e) =>
-                      setContactInfo({ ...contactInfo, phone_number: e.target.value })
-                    }
-                    className="h-8"
-                  />
-                </div>
-              </div>
+              )}
+
+              {bookForClient ? (
+                <>
+                  <h4 className="font-medium text-sm text-purple-700">Client Details</h4>
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Client Name</Label>
+                      <Input
+                        value={clientInfo.name}
+                        onChange={(e) => setClientInfo({ ...clientInfo, name: e.target.value })}
+                        placeholder="e.g. Maria Papadopoulou"
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Client Phone</Label>
+                      <Input
+                        value={clientInfo.phone}
+                        onChange={(e) => setClientInfo({ ...clientInfo, phone: e.target.value })}
+                        placeholder="e.g. +357 99 123456"
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h4 className="font-medium text-sm text-slate-900">Your Details</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">First Name</Label>
+                      <Input
+                        value={contactInfo.first_name}
+                        onChange={(e) => setContactInfo({ ...contactInfo, first_name: e.target.value })}
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Last Name</Label>
+                      <Input
+                        value={contactInfo.last_name}
+                        onChange={(e) => setContactInfo({ ...contactInfo, last_name: e.target.value })}
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <Label className="text-xs">Phone Number</Label>
+                      <Input
+                        value={contactInfo.phone_number}
+                        onChange={(e) =>
+                          setContactInfo({ ...contactInfo, phone_number: e.target.value })
+                        }
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

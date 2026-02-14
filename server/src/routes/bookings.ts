@@ -118,11 +118,12 @@ function calculatePrice(classType: string, mode: string): number {
 // Create booking
 router.post('/', authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { start_time, class_type, mode, user_info } = req.body;
+    const { start_time, class_type, mode, user_info, client_name, client_phone } = req.body;
     const userId = req.user!.id;
+    const isAdmin = req.user!.isAdmin;
 
-    // Update user profile if provided
-    if (user_info) {
+    // Update user profile if provided (only when NOT booking for a client)
+    if (user_info && !client_name) {
       await db
         .update(schema.users)
         .set({
@@ -171,9 +172,9 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
         return res.status(400).json({ error: 'Class is full' });
       }
 
-      // Check if user already booked
+      // Check if user already booked (skip for admin users - they can book multiple slots)
       const userBooking = bookings.find((b) => b.userId === userId);
-      if (userBooking) {
+      if (userBooking && !req.user!.isAdmin) {
         return res.status(400).json({ error: 'You are already booked for this class' });
       }
     } else {
@@ -241,6 +242,8 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
         price,
         status: 'confirmed',
         userCalendarEventId, // Store the user's calendar event ID for cancellation
+        clientName: (isAdmin && client_name) ? client_name : null,
+        clientPhone: (isAdmin && client_phone) ? client_phone : null,
       })
       .returning();
 

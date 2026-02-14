@@ -166,6 +166,36 @@ sqlite.exec(`
   )
 `);
 
+// Add client_name and client_phone columns to bookings if they don't exist
+try {
+  sqlite.exec(`ALTER TABLE bookings ADD COLUMN client_name TEXT`);
+} catch (e) {
+  // Column already exists, ignore
+}
+try {
+  sqlite.exec(`ALTER TABLE bookings ADD COLUMN client_phone TEXT`);
+} catch (e) {
+  // Column already exists, ignore
+}
+
+// Create app_settings table
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Set default registration_open_day setting (Friday = 5, time = 08:00)
+try {
+  sqlite.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('registration_open_enabled', 'true')`);
+  sqlite.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('registration_open_day', '5')`);
+  sqlite.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('registration_open_time', '08:00')`);
+} catch (e) {
+  // Ignore
+}
+
 export const db = drizzle(sqlite, { schema });
 
 export { schema };

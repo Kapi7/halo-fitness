@@ -378,6 +378,18 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // Registration Settings
+  async getRegistrationSettings() {
+    return this.request('/admin/settings/registration');
+  }
+
+  async updateRegistrationSettings(data) {
+    return this.request('/admin/settings/registration', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();

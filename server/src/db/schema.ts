@@ -38,6 +38,8 @@ export const bookings = sqliteTable('bookings', {
   price: real('price').notNull(),
   status: text('status', { enum: ['confirmed', 'cancelled'] }).default('confirmed'),
   userCalendarEventId: text('user_calendar_event_id'), // User's personal Google Calendar event ID
+  clientName: text('client_name'), // For admin bookings on behalf of clients
+  clientPhone: text('client_phone'), // For admin bookings on behalf of clients
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -129,6 +131,13 @@ export const userNotes = sqliteTable('user_notes', {
   adminId: text('admin_id').notNull().references(() => users.id),
   note: text('note').notNull(),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+// App Settings table (key-value store for global settings)
+export const appSettings = sqliteTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
 // Types for use in the application

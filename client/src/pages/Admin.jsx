@@ -157,6 +157,9 @@ export default function Admin() {
   });
   const [createdUserPassword, setCreatedUserPassword] = useState(null);
 
+  // Registration settings state
+  const [regSettings, setRegSettings] = useState({ enabled: true, dayOfWeek: 5, time: '08:00' });
+
   useEffect(() => {
     loadData();
   }, []);
@@ -176,6 +179,7 @@ export default function Admin() {
         fetchSlotClosures(),
         fetchPricingTiers(),
         fetchUsers(),
+        fetchRegSettings(),
       ]);
     } catch (e) {
       console.error('Failed to load admin data:', e);
@@ -235,6 +239,25 @@ export default function Admin() {
       setPricingTiers(res.tiers || []);
     } catch (e) {
       console.error('Failed to fetch pricing tiers:', e);
+    }
+  };
+
+  const fetchRegSettings = async () => {
+    try {
+      const res = await api.getRegistrationSettings();
+      setRegSettings(res);
+    } catch (e) {
+      console.error('Failed to fetch registration settings:', e);
+    }
+  };
+
+  const saveRegSettings = async (newSettings) => {
+    try {
+      await api.updateRegistrationSettings(newSettings);
+      setRegSettings(newSettings);
+      toast.success('Registration settings saved');
+    } catch (e) {
+      toast.error('Failed to save registration settings');
     }
   };
 
@@ -1321,6 +1344,62 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Registration Opening Settings */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="w-5 h-5" /> Registration Opening
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4 max-w-md">
+                <p className="text-sm text-slate-500">
+                  Control when users can book classes for the following week. When enabled, next week's
+                  slots are hidden until the configured day and time.
+                </p>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={regSettings.enabled}
+                    onCheckedChange={(v) => saveRegSettings({ ...regSettings, enabled: v })}
+                  />
+                  <Label>Enable registration gate</Label>
+                </div>
+                {regSettings.enabled && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs">Opens on</Label>
+                      <Select
+                        value={String(regSettings.dayOfWeek)}
+                        onValueChange={(v) => saveRegSettings({ ...regSettings, dayOfWeek: parseInt(v) })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">Monday</SelectItem>
+                          <SelectItem value="2">Tuesday</SelectItem>
+                          <SelectItem value="3">Wednesday</SelectItem>
+                          <SelectItem value="4">Thursday</SelectItem>
+                          <SelectItem value="5">Friday</SelectItem>
+                          <SelectItem value="6">Saturday</SelectItem>
+                          <SelectItem value="0">Sunday</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">At time</Label>
+                      <Input
+                        type="time"
+                        value={regSettings.time}
+                        onChange={(e) => saveRegSettings({ ...regSettings, time: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ============== SESSIONS TAB ============== */}

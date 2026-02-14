@@ -34,6 +34,78 @@ router.get('/:date', async (req, res) => {
       return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
     }
 
+    // Check if user is admin (from optional auth header)
+    let isAdmin = false;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const jwt = await import('jsonwebtoken');
+        const token = authHeader.substring(7);
+        const decoded = jwt.default.verify(token, process.env.JWT_SECRET || 'halo-secret-key') as any;
+        if (decoded?.userId) {
+          const [authUser] = await db
+            .select()
+            .from(schema.users)
+            .where(eq(schema.users.id, decoded.userId))
+            .limit(1);
+          if (authUser?.isAdmin) isAdmin = true;
+        }
+      } catch (e) {
+        // Invalid token, not admin
+      }
+    }
+
+    // Registration gate: check if next week's slots should be hidden
+    if (!isAdmin) {
+      const settings = await db.select().from(schema.appSettings);
+      const settingsMap: Record<string, string> = {};
+      for (const s of settings) settingsMap[s.key] = s.value;
+
+      const registrationEnabled = settingsMap['registration_open_enabled'] === 'true';
+      if (registrationEnabled) {
+        const openDay = parseInt(settingsMap['registration_open_day'] || '5'); // Friday = 5
+        const openTime = settingsMap['registration_open_time'] || '08:00';
+        const [openH, openM] = openTime.split(':').map(Number);
+
+        const { toZonedTime: toZoned } = await import('date-fns-tz');
+        const nowInCyprus = toZoned(new Date(), timeZone);
+        const currentDay = nowInCyprus.getDay();
+        const currentHour = nowInCyprus.getHours();
+        const currentMinute = nowInCyprus.getMinutes();
+
+        // Calculate the Monday of the current week
+        const nowDate = new Date(nowInCyprus);
+        const daysSinceMonday = (currentDay === 0 ? 6 : currentDay - 1);
+        const currentWeekMonday = new Date(nowDate);
+        currentWeekMonday.setDate(nowDate.getDate() - daysSinceMonday);
+        currentWeekMonday.setHours(0, 0, 0, 0);
+
+        // Calculate next week Monday
+        const nextWeekMonday = new Date(currentWeekMonday);
+        nextWeekMonday.setDate(currentWeekMonday.getDate() + 7);
+
+        // Check if requested date is in next week or later
+        const [reqYear, reqMonth, reqDay] = date.split('-').map(Number);
+        const requestedDate = new Date(reqYear, reqMonth - 1, reqDay);
+        requestedDate.setHours(0, 0, 0, 0);
+
+        if (requestedDate >= nextWeekMonday) {
+          // Check if we've passed the opening time this week
+          const hasOpeningPassed = currentDay > openDay ||
+            (currentDay === openDay && (currentHour > openH || (currentHour === openH && currentMinute >= openM)));
+
+          if (!hasOpeningPassed) {
+            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            return res.json({
+              slots: [],
+              registrationLocked: true,
+              message: `Registration for next week opens on ${dayNames[openDay]} at ${openTime}`,
+            });
+          }
+        }
+      }
+    }
+
     // Get day of week - parse the date string directly to avoid timezone issues
     const [year, month, day] = date.split('-').map(Number);
     const localDate = new Date(year, month - 1, day); // month is 0-indexed
