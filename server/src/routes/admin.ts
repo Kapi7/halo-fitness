@@ -1618,11 +1618,20 @@ router.post('/bookings', async (req: AuthRequest, res) => {
         return res.status(400).json({ error: 'Class is full' });
       }
 
-      // Check if user already booked (skip for admin users booking themselves)
-      const userBooking = bookings.find((b) => b.userId === userId);
-      const bookingUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
-      if (userBooking && !(bookingUser[0]?.isAdmin)) {
-        return res.status(400).json({ error: 'User is already booked for this class' });
+      // Check for duplicate bookings
+      if (clientName) {
+        // Admin booking on behalf of a client - check by client name
+        const duplicateClient = bookings.find((b: any) => b.clientName && b.clientName.toLowerCase() === clientName.toLowerCase());
+        if (duplicateClient) {
+          return res.status(400).json({ error: `${clientName} is already booked for this class` });
+        }
+      } else {
+        // Regular user booking - check by userId (skip for admin users)
+        const userBooking = bookings.find((b) => b.userId === userId && !b.clientName);
+        const bookingUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+        if (userBooking && !(bookingUser[0]?.isAdmin)) {
+          return res.status(400).json({ error: 'User is already booked for this class' });
+        }
       }
     } else {
       // Create new session

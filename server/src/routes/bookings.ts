@@ -172,11 +172,21 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
         return res.status(400).json({ error: 'Class is full' });
       }
 
-      // Check if user already booked (skip for admin users - they can book multiple slots)
-      const userBooking = bookings.find((b) => b.userId === userId);
-      if (userBooking && !req.user!.isAdmin) {
-        return res.status(400).json({ error: 'You are already booked for this class' });
+      // Check for duplicate bookings
+      if (isAdmin && client_name) {
+        // Admin booking on behalf of client - check by client name
+        const duplicateClient = bookings.find((b: any) => b.clientName && b.clientName.toLowerCase() === client_name.toLowerCase());
+        if (duplicateClient) {
+          return res.status(400).json({ error: `${client_name} is already booked for this class` });
+        }
+      } else if (!isAdmin) {
+        // Regular user - check by userId
+        const userBooking = bookings.find((b) => b.userId === userId);
+        if (userBooking) {
+          return res.status(400).json({ error: 'You are already booked for this class' });
+        }
       }
+      // Admin booking for themselves - no duplicate check (can book multiple slots)
     } else {
       // Create new session
       const endTime = addHours(parseISO(start_time), 1).toISOString();
