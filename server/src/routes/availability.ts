@@ -91,8 +91,11 @@ router.get('/:date', async (req, res) => {
 
         if (requestedDate >= nextWeekMonday) {
           // Check if we've passed the opening time this week
-          const hasOpeningPassed = currentDay > openDay ||
-            (currentDay === openDay && (currentHour > openH || (currentHour === openH && currentMinute >= openM)));
+          // Use Monday=1..Sunday=7 to handle week wraparound correctly
+          const adjustedCurrentDay = currentDay === 0 ? 7 : currentDay;
+          const adjustedOpenDay = openDay === 0 ? 7 : openDay;
+          const hasOpeningPassed = adjustedCurrentDay > adjustedOpenDay ||
+            (adjustedCurrentDay === adjustedOpenDay && (currentHour > openH || (currentHour === openH && currentMinute >= openM)));
 
           if (!hasOpeningPassed) {
             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
