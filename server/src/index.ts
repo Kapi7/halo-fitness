@@ -1,10 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import crypto from 'crypto';
-import { eq } from 'drizzle-orm';
-import { db } from './db/index.js';
-import * as schema from './db/schema.js';
 import authRoutes from './routes/auth.js';
 import availabilityRoutes from './routes/availability.js';
 import bookingsRoutes from './routes/bookings.js';
@@ -33,46 +29,6 @@ app.use(express.json());
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// ONE-TIME migration: move 10:00 bookings to 09:30 on Feb 16
-app.post('/api/migrate-feb16', async (req, res) => {
-  const secret = req.headers['x-migrate-secret'];
-  if (secret !== 'halo-move-2026') return res.status(403).json({ error: 'forbidden' });
-
-  try {
-    const sqlite = (db as any)._client || (db as any).session?.client;
-    
-    // Create new session at 09:30
-    const newSessionId = crypto.randomUUID();
-    const oldSessionId = 'd0e95761-b26f-4e4f-84bd-7671b763ddcf'; // 10:00 HIIT Group
-    
-    // Get old session details
-    const oldSession = await db.select().from(schema.classSessions).where(eq(schema.classSessions.id, oldSessionId));
-    if (!oldSession.length) return res.status(404).json({ error: 'old session not found' });
-    
-    // Insert new session at 09:30 (Cyprus = UTC+2 in Feb, so 09:30 local = 07:30 UTC)
-    await db.insert(schema.classSessions).values({
-      id: newSessionId,
-      startTime: '2026-02-16T07:30:00.000Z',
-      endTime: '2026-02-16T08:30:00.000Z',
-      classType: oldSession[0].classType,
-      mode: oldSession[0].mode,
-      status: 'scheduled',
-    });
-    
-    // Move all bookings from old session to new
-    const moved = await db.update(schema.bookings)
-      .set({ sessionId: newSessionId })
-      .where(eq(schema.bookings.sessionId, oldSessionId));
-    
-    // Delete old session
-    await db.delete(schema.classSessions).where(eq(schema.classSessions.id, oldSessionId));
-    
-    res.json({ success: true, newSessionId, message: 'Moved 10:00 bookings to 09:30' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Routes
