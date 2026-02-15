@@ -189,7 +189,7 @@ sqlite.exec(`
 
 // Set default registration_open_day setting (Friday = 5, time = 08:00)
 try {
-  sqlite.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('registration_open_enabled', 'true')`);
+  sqlite.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('registration_open_enabled', 'false')`);
   sqlite.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('registration_open_day', '5')`);
   sqlite.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('registration_open_time', '08:00')`);
 } catch (e) {
