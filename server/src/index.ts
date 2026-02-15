@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { eq } from 'drizzle-orm';
+import { db } from './db/index.js';
+import * as schema from './db/schema.js';
 import authRoutes from './routes/auth.js';
 import availabilityRoutes from './routes/availability.js';
 import bookingsRoutes from './routes/bookings.js';
@@ -29,6 +32,21 @@ app.use(express.json());
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ONE-TIME fix: move 09:30 session to 09:00 slot
+app.post('/api/fix-feb16', async (req, res) => {
+  if (req.headers['x-migrate-secret'] !== 'halo-move-2026') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const sessionId = '61cfbcb4-1943-49f1-ac98-cfb303b6c6e7';
+    // Move from 07:30 UTC (09:30 local) to 07:00 UTC (09:00 local)
+    await db.update(schema.classSessions)
+      .set({ startTime: '2026-02-16T07:00:00.000Z', endTime: '2026-02-16T08:00:00.000Z' })
+      .where(eq(schema.classSessions.id, sessionId));
+    res.json({ success: true, message: 'Session moved to 09:00' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Routes
