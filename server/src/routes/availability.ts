@@ -174,7 +174,7 @@ router.get('/:date', async (req, res) => {
       switch (dayOfWeek) {
         case 1: // Mon
         case 2: // Tue
-          scheduleConfig = { startTime: '08:15', slotsCount: 4, isClosed: false } as any;
+          scheduleConfig = { startTime: '08:00', slotsCount: 2, isClosed: false } as any;
           break;
         case 3: // Wed
           scheduleConfig = { startTime: '08:00', slotsCount: 4, isClosed: false } as any;
