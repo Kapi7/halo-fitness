@@ -1,9 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { eq, and } from 'drizzle-orm';
-import { db } from './db/index.js';
-import * as schema from './db/schema.js';
 import authRoutes from './routes/auth.js';
 import availabilityRoutes from './routes/availability.js';
 import bookingsRoutes from './routes/bookings.js';
@@ -32,23 +29,6 @@ app.use(express.json());
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// ONE-TIME: update Monday schedule to 2 slots (remove 10:00)
-app.post('/api/fix-schedule', async (req, res) => {
-  if (req.headers['x-migrate-secret'] !== 'halo-move-2026') return res.status(403).json({ error: 'forbidden' });
-  try {
-    // Update Monday (dayOfWeek=1) default config to 2 slots
-    const result = await db.update(schema.scheduleConfigs)
-      .set({ slotsCount: 2 })
-      .where(and(
-        eq(schema.scheduleConfigs.type, 'default'),
-        eq(schema.scheduleConfigs.dayOfWeek, 1)
-      ));
-    res.json({ success: true, message: 'Monday slots updated to 2' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Routes
