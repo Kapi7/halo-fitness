@@ -34,16 +34,19 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ONE-TIME fix: move 09:30 session to 09:00 slot
+// ONE-TIME fix: merge bookings into existing 09:00 session
 app.post('/api/fix-feb16', async (req, res) => {
   if (req.headers['x-migrate-secret'] !== 'halo-move-2026') return res.status(403).json({ error: 'forbidden' });
   try {
-    const sessionId = '61cfbcb4-1943-49f1-ac98-cfb303b6c6e7';
-    // Move from 07:30 UTC (09:30 local) to 07:00 UTC (09:00 local)
-    await db.update(schema.classSessions)
-      .set({ startTime: '2026-02-16T07:00:00.000Z', endTime: '2026-02-16T08:00:00.000Z' })
-      .where(eq(schema.classSessions.id, sessionId));
-    res.json({ success: true, message: 'Session moved to 09:00' });
+    const orphanSessionId = '61cfbcb4-1943-49f1-ac98-cfb303b6c6e7'; // my 09:30 session
+    const targetSessionId = 'e0fe34b3-34a9-4b25-b69b-529ac83de5ce'; // existing 09:00 session
+    // Move bookings from orphan to existing 09:00 session
+    await db.update(schema.bookings)
+      .set({ sessionId: targetSessionId })
+      .where(eq(schema.bookings.sessionId, orphanSessionId));
+    // Delete orphan session
+    await db.delete(schema.classSessions).where(eq(schema.classSessions.id, orphanSessionId));
+    res.json({ success: true, message: 'Merged bookings into 09:00 session, deleted orphan' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
