@@ -377,6 +377,56 @@ router.get('/:date', async (req, res) => {
       slots.push(slotStatus);
     }
 
+    // Include DB sessions that don't match any predefined slot (e.g. 09:30 sessions)
+    const matchedSessionIds = new Set(slots.map(s => s.details?.session_id).filter(Boolean));
+    const unmatchedSessions = dbSessions.filter(s => !matchedSessionIds.has(s.id));
+    
+    for (const session of unmatchedSessions) {
+      const sTime = toZonedTime(new Date(session.startTime), timeZone);
+      const hStr = String(sTime.getHours()).padStart(2, '0');
+      const mStr = String(sTime.getMinutes()).padStart(2, '0');
+      
+      const bookingsForSession = await db
+        .select()
+        .from(schema.bookings)
+        .where(
+          and(
+            eq(schema.bookings.sessionId, session.id),
+            eq(schema.bookings.status, 'confirmed')
+          )
+        );
+      
+      let participantNames: string[] = [];
+      if (session.mode === 'Group' && bookingsForSession.length > 0) {
+        for (const booking of bookingsForSession) {
+          const [user] = await db
+            .select()
+            .from(schema.users)
+            .where(eq(schema.users.id, booking.userId))
+            .limit(1);
+          if (user) participantNames.push(user.firstName || 'Member');
+        }
+      }
+      
+      const extraSlot: Slot = {
+        time: `${hStr}:${mStr}`,
+        start_time: new Date(session.startTime).toISOString(),
+        status: session.mode === 'Private' || bookingsForSession.length >= 4 ? 'full' : bookingsForSession.length > 0 ? 'partial' : 'empty',
+        details: {
+          session_id: session.id,
+          class_type: session.classType,
+          mode: session.mode,
+          participants: bookingsForSession.length,
+          participant_names: participantNames,
+        },
+      };
+      
+      // Insert in correct time order
+      const insertIdx = slots.findIndex(s => s.time > extraSlot.time);
+      if (insertIdx === -1) slots.push(extraSlot);
+      else slots.splice(insertIdx, 0, extraSlot);
+    }
+
     return res.json({ slots, timeZone });
   } catch (error) {
     console.error('Availability error:', error);

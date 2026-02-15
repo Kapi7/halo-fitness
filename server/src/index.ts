@@ -1,9 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { eq } from 'drizzle-orm';
-import { db } from './db/index.js';
-import * as schema from './db/schema.js';
 import authRoutes from './routes/auth.js';
 import availabilityRoutes from './routes/availability.js';
 import bookingsRoutes from './routes/bookings.js';
@@ -32,24 +29,6 @@ app.use(express.json());
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// ONE-TIME fix: merge bookings into existing 09:00 session
-app.post('/api/fix-feb16', async (req, res) => {
-  if (req.headers['x-migrate-secret'] !== 'halo-move-2026') return res.status(403).json({ error: 'forbidden' });
-  try {
-    const orphanSessionId = '61cfbcb4-1943-49f1-ac98-cfb303b6c6e7'; // my 09:30 session
-    const targetSessionId = 'e0fe34b3-34a9-4b25-b69b-529ac83de5ce'; // existing 09:00 session
-    // Move bookings from orphan to existing 09:00 session
-    await db.update(schema.bookings)
-      .set({ sessionId: targetSessionId })
-      .where(eq(schema.bookings.sessionId, orphanSessionId));
-    // Delete orphan session
-    await db.delete(schema.classSessions).where(eq(schema.classSessions.id, orphanSessionId));
-    res.json({ success: true, message: 'Merged bookings into 09:00 session, deleted orphan' });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Routes
