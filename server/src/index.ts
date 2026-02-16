@@ -62,7 +62,7 @@ app.get('/api/auth/google/callback', authMiddleware, async (req: AuthRequest, re
 
 // TEMP: Merge Thursday Feb 19 into single 09:30 slot
 app.get('/api/temp-merge-thu19', async (req, res) => {
-  const VERSION = 'v3';
+  const VERSION = 'v4';
   try {
     const { db } = await import('./db/index.js');
     const schema = await import('./db/schema.js');
@@ -98,7 +98,7 @@ app.get('/api/temp-merge-thu19', async (req, res) => {
     const allSessions = await db
       .select()
       .from(schema.classSessions)
-      .where(sql`${schema.classSessions.startTime} LIKE '2026-02-19%'`);
+      .where(sql.raw(`"start_time" LIKE '2026-02-19%'`));
 
     // 3. Find or keep the 09:30 session
     const target = allSessions.find(s => s.startTime.includes('T07:30'));
@@ -156,7 +156,7 @@ app.get('/api/temp-merge-thu19', async (req, res) => {
     const result = await db
       .select()
       .from(schema.classSessions)
-      .where(sql`${schema.classSessions.startTime} LIKE '2026-02-19%'`);
+      .where(sql.raw(`"start_time" LIKE '2026-02-19%'`));
 
     const resultBookings = await db
       .select()
