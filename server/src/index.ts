@@ -207,32 +207,39 @@ app.get('/api/temp-remove-itay-thu19', async (req, res) => {
     const target = sessions.find(s => s.startTime.includes('T07:30'));
     if (!target) return res.json({ error: 'No 09:30 session found' });
 
-    // Find Itay's booking
+    // Find bookings with user names
     const bookings = await db
-      .select()
+      .select({
+        bookingId: schema.bookings.id,
+        userId: schema.bookings.userId,
+        firstName: schema.users.firstName,
+        lastName: schema.users.lastName,
+        clientName: schema.bookings.clientName,
+      })
       .from(schema.bookings)
+      .leftJoin(schema.users, eq(schema.bookings.userId, schema.users.id))
       .where(eq(schema.bookings.sessionId, target.id));
 
     const itayBooking = bookings.find(b =>
-      (b.clientName || '').toLowerCase().includes('itay')
+      (b.firstName || b.clientName || '').toLowerCase().includes('itay')
     );
 
-    if (!itayBooking) return res.json({ error: 'Itay not found in session', names: bookings.map(b => b.clientName) });
+    if (!itayBooking) return res.json({ error: 'Itay not found', names: bookings.map(b => b.firstName || b.clientName) });
 
     // Delete Itay's booking
-    await db.delete(schema.bookings).where(eq(schema.bookings.id, itayBooking.id));
+    await db.delete(schema.bookings).where(eq(schema.bookings.id, itayBooking.bookingId));
 
     // Update participant count
     await db.update(schema.classSessions)
       .set({ currentParticipants: bookings.length - 1 })
       .where(eq(schema.classSessions.id, target.id));
 
-    const remaining = bookings.filter(b => b.id !== itayBooking.id);
+    const remaining = bookings.filter(b => b.bookingId !== itayBooking.bookingId);
     return res.json({
       success: true,
       message: 'Itay removed from Thursday Feb 19 09:30',
       participants: remaining.length,
-      names: remaining.map(b => b.clientName)
+      names: remaining.map(b => b.firstName || b.clientName)
     });
   } catch (error: any) {
     return res.json({ error: error.message });
