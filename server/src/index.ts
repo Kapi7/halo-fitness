@@ -176,6 +176,54 @@ app.get('/api/temp-merge-thu19', async (req, res) => {
   }
 });
 
+// TEMP: Remove Itay from Thursday Feb 19 09:30
+app.get('/api/temp-remove-itay-thu19', async (req, res) => {
+  try {
+    const { db } = await import('./db/index.js');
+    const schema = await import('./db/schema.js');
+    const { eq, and, sql } = await import('drizzle-orm');
+
+    // Find 09:30 session for Feb 19
+    const sessions = await db
+      .select()
+      .from(schema.classSessions)
+      .where(sql.raw(`"start_time" LIKE '2026-02-19%'`));
+
+    const target = sessions.find(s => s.startTime.includes('T07:30'));
+    if (!target) return res.json({ error: 'No 09:30 session found' });
+
+    // Find Itay's booking
+    const bookings = await db
+      .select()
+      .from(schema.bookings)
+      .where(eq(schema.bookings.sessionId, target.id));
+
+    const itayBooking = bookings.find(b =>
+      (b.clientName || '').toLowerCase().includes('itay')
+    );
+
+    if (!itayBooking) return res.json({ error: 'Itay not found in session', names: bookings.map(b => b.clientName) });
+
+    // Delete Itay's booking
+    await db.delete(schema.bookings).where(eq(schema.bookings.id, itayBooking.id));
+
+    // Update participant count
+    await db.update(schema.classSessions)
+      .set({ currentParticipants: bookings.length - 1 })
+      .where(eq(schema.classSessions.id, target.id));
+
+    const remaining = bookings.filter(b => b.id !== itayBooking.id);
+    return res.json({
+      success: true,
+      message: 'Itay removed from Thursday Feb 19 09:30',
+      participants: remaining.length,
+      names: remaining.map(b => b.clientName)
+    });
+  } catch (error: any) {
+    return res.json({ error: error.message });
+  }
+});
+
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Server error:', err);
