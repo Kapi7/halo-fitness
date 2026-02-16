@@ -65,7 +65,7 @@ app.get('/api/temp-merge-thu19', async (req, res) => {
   try {
     const { db } = await import('./db/index.js');
     const schema = await import('./db/schema.js');
-    const { eq, and, like } = await import('drizzle-orm');
+    const { eq, and, like, sql } = await import('drizzle-orm');
 
     // 1. Create/update override: 1 slot at 09:30 for 2026-02-19
     const [existing] = await db
@@ -97,7 +97,7 @@ app.get('/api/temp-merge-thu19', async (req, res) => {
     const allSessions = await db
       .select()
       .from(schema.classSessions)
-      .where(like(schema.classSessions.startTime, '2026-02-19%'));
+      .where(sql`${schema.classSessions.startTime} LIKE '2026-02-19%'`);
 
     // 3. Find or keep the 09:30 session
     const target = allSessions.find(s => s.startTime.includes('T07:30'));
@@ -155,7 +155,7 @@ app.get('/api/temp-merge-thu19', async (req, res) => {
     const result = await db
       .select()
       .from(schema.classSessions)
-      .where(like(schema.classSessions.startTime, '2026-02-19%'));
+      .where(sql`${schema.classSessions.startTime} LIKE '2026-02-19%'`);
 
     const resultBookings = await db
       .select()
