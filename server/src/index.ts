@@ -62,43 +62,58 @@ app.get('/api/auth/google/callback', authMiddleware, async (req: AuthRequest, re
 
 // TEMP: Merge Thursday Feb 19 into single 09:30 slot
 app.get('/api/temp-merge-thu19', async (req, res) => {
-  const VERSION = 'v4';
+  const VERSION = 'v5';
   try {
     const { db } = await import('./db/index.js');
     const schema = await import('./db/schema.js');
     const { eq, and, sql } = await import('drizzle-orm');
 
     // 1. Create/update override: 1 slot at 09:30 for 2026-02-19
-    const [existing] = await db
-      .select()
-      .from(schema.scheduleConfigs)
-      .where(
-        and(
-          eq(schema.scheduleConfigs.type, 'override'),
-          eq(schema.scheduleConfigs.specificDate, '2026-02-19')
+    let existing: any;
+    try {
+      const rows = await db
+        .select()
+        .from(schema.scheduleConfigs)
+        .where(
+          and(
+            eq(schema.scheduleConfigs.type, 'override'),
+            eq(schema.scheduleConfigs.specificDate, '2026-02-19')
+          )
         )
-      )
-      .limit(1);
+        .limit(1);
+      existing = rows[0];
+    } catch (e: any) {
+      return res.json({ error: 'Step 1 failed: ' + e.message, version: VERSION });
+    }
 
-    if (existing) {
-      await db.update(schema.scheduleConfigs)
-        .set({ startTime: '09:30', slotsCount: 1, isClosed: false })
-        .where(eq(schema.scheduleConfigs.id, existing.id));
-    } else {
-      await db.insert(schema.scheduleConfigs).values({
-        type: 'override',
-        specificDate: '2026-02-19',
-        startTime: '09:30',
-        slotsCount: 1,
-        isClosed: false,
-      });
+    try {
+      if (existing) {
+        await db.update(schema.scheduleConfigs)
+          .set({ startTime: '09:30', slotsCount: 1, isClosed: false })
+          .where(eq(schema.scheduleConfigs.id, existing.id));
+      } else {
+        await db.insert(schema.scheduleConfigs).values({
+          type: 'override',
+          specificDate: '2026-02-19',
+          startTime: '09:30',
+          slotsCount: 1,
+          isClosed: false,
+        });
+      }
+    } catch (e: any) {
+      return res.json({ error: 'Step 1b failed: ' + e.message, version: VERSION });
     }
 
     // 2. Get all sessions for Feb 19
-    const allSessions = await db
-      .select()
-      .from(schema.classSessions)
-      .where(sql.raw(`"start_time" LIKE '2026-02-19%'`));
+    let allSessions: any[];
+    try {
+      allSessions = await db
+        .select()
+        .from(schema.classSessions)
+        .where(sql.raw(`"start_time" LIKE '2026-02-19%'`));
+    } catch (e: any) {
+      return res.json({ error: 'Step 2 failed: ' + e.message, version: VERSION });
+    }
 
     // 3. Find or keep the 09:30 session
     const target = allSessions.find(s => s.startTime.includes('T07:30'));
@@ -172,7 +187,7 @@ app.get('/api/temp-merge-thu19', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Merge error:', error);
-    return res.json({ error: error.message, version: VERSION });
+    return res.json({ error: error.message, stack: error.stack?.split('\n').slice(0,5), version: VERSION });
   }
 });
 
