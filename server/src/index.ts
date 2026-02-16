@@ -62,10 +62,11 @@ app.get('/api/auth/google/callback', authMiddleware, async (req: AuthRequest, re
 
 // TEMP: Merge Thursday Feb 19 into single 09:30 slot
 app.get('/api/temp-merge-thu19', async (req, res) => {
+  const VERSION = 'v3';
   try {
     const { db } = await import('./db/index.js');
     const schema = await import('./db/schema.js');
-    const { eq, and, like, sql } = await import('drizzle-orm');
+    const { eq, and, sql } = await import('drizzle-orm');
 
     // 1. Create/update override: 1 slot at 09:30 for 2026-02-19
     const [existing] = await db
@@ -171,7 +172,7 @@ app.get('/api/temp-merge-thu19', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Merge error:', error);
-    return res.json({ error: error.message });
+    return res.json({ error: error.message, version: VERSION });
   }
 });
 
